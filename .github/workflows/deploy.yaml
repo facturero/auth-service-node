@@ -52,9 +52,7 @@ jobs:
       - name: Setup Kubeconfig
         run: |
           mkdir -p ~/.kube
-          cat > ~/.kube/config << 'EOF'
-${{ secrets.KUBE_CONFIG }}
-EOF
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 --decode > ~/.kube/config
 
       - name: Deploy to K3s
         run: |
