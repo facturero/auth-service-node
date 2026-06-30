@@ -1,0 +1,23 @@
+# dependencias
+node_modules/
+
+# build
+dist/
+
+# entorno
+.env
+.env.local
+*.local
+
+# claves (no commitear claves reales)
+*.pem
+keys/
+
+# logs
+*.log
+npm-debug.log*
+
+# editor / SO
+.DS_Store
+.idea/
+.vscode/

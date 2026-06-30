@@ -1,0 +1,441 @@
+openapi: 3.0.3
+
+info:
+  title: auth-service API
+  version: 1.0.0
+  description: >
+    Servicio de autenticación del ecosistema CRM. Gestiona credenciales,
+    emite y rota tokens JWT, y permite iniciar sesión o crear cuenta con Google
+    (flujo de ID Token, sin client_secret en el backend).
+    No gestiona roles ni permisos (eso es de identity-service).
+
+servers:
+  - url: http://localhost:3001
+    description: Desarrollo local
+
+tags:
+  - name: health
+    description: Estado del servicio
+  - name: auth
+    description: Registro, inicio de sesión y manejo de tokens
+
+paths:
+
+  /health:
+    get:
+      tags: [health]
+      summary: Healthcheck
+      description: Verifica que el servicio está arriba.
+      security: []
+      responses:
+        '200':
+          description: Servicio operativo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Crear cuenta con email y contraseña
+      description: >
+        Registra una nueva credencial. Genera el `user_id` (sub del JWT),
+        emite el evento `auth.credential.registered` y devuelve los tokens.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              ejemplo:
+                value:
+                  email: ana@empresa.com
+                  password: "S3guraContrasena!"
+      responses:
+        '201':
+          description: Cuenta creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '409':
+          description: El email ya está registrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: EMAIL_ALREADY_EXISTS
+                message: El email ya está registrado.
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Iniciar sesión con email y contraseña
+      description: Verifica las credenciales y devuelve access + refresh token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              ejemplo:
+                value:
+                  email: ana@empresa.com
+                  password: "S3guraContrasena!"
+      responses:
+        '200':
+          description: Autenticación correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Credenciales inválidas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_CREDENTIALS
+                message: Email o contraseña incorrectos.
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/google:
+    post:
+      tags: [auth]
+      summary: Iniciar sesión o crear cuenta con Google
+      description: >
+        Recibe el ID Token emitido por Google Identity Services en el front.
+        El backend verifica firma, audiencia (`GOOGLE_CLIENT_ID`), emisor y
+        expiración. Comportamiento:
+        (1) si el `sub` de Google ya está vinculado, inicia sesión;
+        (2) si el email ya existe como cuenta local verificada, la vincula;
+        (3) si no existe, crea la cuenta (sin contraseña).
+        No requiere client_secret.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleAuthRequest'
+            examples:
+              ejemplo:
+                value:
+                  idToken: "eyJhbGciOiJSUzI1NiIsImtpZCI6Ij..."
+      responses:
+        '200':
+          description: Autenticación correcta (sesión iniciada, vinculada o cuenta creada)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              examples:
+                usuario-nuevo:
+                  summary: Cuenta creada
+                  value:
+                    accessToken: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    tokenType: Bearer
+                    expiresIn: 900
+                    refreshToken: "9f8c2a1e-..."
+                    isNewUser: true
+                    user:
+                      id: 6f3b9c2a-1d4e-4a8b-9c7f-2e1a0b3c4d5e
+                      email: ana@gmail.com
+                      emailVerified: true
+                      authProvider: google
+        '401':
+          description: ID Token inválido o expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_GOOGLE_TOKEN
+                message: El token de Google no es válido.
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Renovar el access token
+      description: >
+        Valida el refresh token (no expirado, no revocado), lo rota
+        (revoca el actual y emite uno nuevo) y devuelve un nuevo access token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+            examples:
+              ejemplo:
+                value:
+                  refreshToken: "9f8c2a1e-7b6d-4c3a-8e2f-1a0b9c8d7e6f"
+      responses:
+        '200':
+          description: Tokens renovados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Refresh token inválido, expirado o revocado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_REFRESH_TOKEN
+                message: El refresh token no es válido.
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Cerrar sesión (revocar refresh token)
+      description: Marca el refresh token como revocado. Operación idempotente.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+            examples:
+              ejemplo:
+                value:
+                  refreshToken: "9f8c2a1e-7b6d-4c3a-8e2f-1a0b9c8d7e6f"
+      responses:
+        '204':
+          description: Sesión cerrada (sin contenido)
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Datos de la sesión actual
+      description: Devuelve la información del usuario asociado al access token.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Información del usuario autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+              example:
+                id: 6f3b9c2a-1d4e-4a8b-9c7f-2e1a0b3c4d5e
+                email: ana@empresa.com
+                emailVerified: true
+                authProvider: password
+                createdAt: "2026-06-30T14:05:00Z"
+        '401':
+          description: Token ausente, inválido o expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UNAUTHORIZED
+                message: Token ausente o inválido.
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token JWT firmado en RS256. Enviar en `Authorization: Bearer <token>`.
+
+  schemas:
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          example: ana@empresa.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          description: Mínimo 8 caracteres.
+          example: "S3guraContrasena!"
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: ana@empresa.com
+        password:
+          type: string
+          format: password
+          example: "S3guraContrasena!"
+
+    GoogleAuthRequest:
+      type: object
+      required: [idToken]
+      properties:
+        idToken:
+          type: string
+          description: ID Token (JWT) emitido por Google Identity Services en el cliente.
+          example: "eyJhbGciOiJSUzI1NiIsImtpZCI6Ij..."
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          example: "9f8c2a1e-7b6d-4c3a-8e2f-1a0b9c8d7e6f"
+
+    LogoutRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          example: "9f8c2a1e-7b6d-4c3a-8e2f-1a0b9c8d7e6f"
+
+    TokenResponse:
+      type: object
+      required: [accessToken, tokenType, expiresIn, refreshToken, user]
+      properties:
+        accessToken:
+          type: string
+          description: JWT de acceso (corta vida).
+          example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+        tokenType:
+          type: string
+          enum: [Bearer]
+          example: Bearer
+        expiresIn:
+          type: integer
+          description: Segundos de validez del access token.
+          example: 900
+        refreshToken:
+          type: string
+          description: Refresh token opaco (larga vida). Se rota en cada uso.
+          example: "9f8c2a1e-7b6d-4c3a-8e2f-1a0b9c8d7e6f"
+        isNewUser:
+          type: boolean
+          description: Presente en /auth/google; true si se creó la cuenta en esta petición.
+          example: false
+        user:
+          $ref: '#/components/schemas/UserSummary'
+
+    UserSummary:
+      type: object
+      required: [id, email, emailVerified]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: user_id (sub del JWT).
+          example: 6f3b9c2a-1d4e-4a8b-9c7f-2e1a0b3c4d5e
+        email:
+          type: string
+          format: email
+          example: ana@empresa.com
+        emailVerified:
+          type: boolean
+          example: true
+        authProvider:
+          type: string
+          enum: [password, google]
+          description: Cómo se autenticó en esta sesión.
+          example: password
+
+    MeResponse:
+      type: object
+      required: [id, email, emailVerified, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 6f3b9c2a-1d4e-4a8b-9c7f-2e1a0b3c4d5e
+        email:
+          type: string
+          format: email
+          example: ana@empresa.com
+        emailVerified:
+          type: boolean
+          example: true
+        authProvider:
+          type: string
+          enum: [password, google]
+          example: password
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-06-30T14:05:00Z"
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Código de error legible por máquina.
+          example: INVALID_CREDENTIALS
+        message:
+          type: string
+          description: Mensaje legible por humanos.
+          example: Email o contraseña incorrectos.
+        details:
+          type: array
+          description: Detalle por campo (presente en errores de validación).
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: email
+              message:
+                type: string
+                example: Email inválido.
+
+  responses:
+    ValidationError:
+      description: Error de validación de la petición
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: VALIDATION_ERROR
+            message: La petición no es válida.
+            details:
+              - field: email
+                message: Email inválido.
+              - field: password
+                message: Debe tener al menos 8 caracteres.
+
+security: []
