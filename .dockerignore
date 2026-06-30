@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.env.*
+*.local
+.git/
+.github/
+.gitignore
+.gitkeep
+*.md
+!.dockerignore
+.DS_Store
+*.log
+certs/
+keys/
+*.pem

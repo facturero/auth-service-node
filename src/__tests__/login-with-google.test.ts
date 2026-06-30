@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { LoginWithGoogleUseCase } from '../application/use-cases/login-with-google';
 import { Email } from '../domain/value-objects';
-import { Credential, OAuthAccount } from '../domain/entities';
+import { Credential } from '../domain/entities';
 import {
   InMemoryUnitOfWork,
   MockTokenService,

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { RegisterWithPasswordUseCase } from '../application/use-cases/register-with-password';
 import { InMemoryUnitOfWork, MockPasswordHasher, MockTokenService } from './helpers';
 import { EmailAlreadyExistsError } from '../domain/errors';
@@ -105,16 +105,8 @@ describe('RegisterWithPasswordUseCase', () => {
   });
 
   it('persists the refresh token', async () => {
-    await useCase.execute({
-      email: 'rt@test.com',
-      password: 'SecurePass1',
-    });
-
-    const allTokens = await uow.refreshTokens.findByHash('nonexistent');
-    // We can't easily enumerate, but we know save was called at least once
-    // by checking the refresh token from the session
     const session = await useCase.execute({
-      email: 'rt2@test.com',
+      email: 'rt@test.com',
       password: 'SecurePass1',
     });
 

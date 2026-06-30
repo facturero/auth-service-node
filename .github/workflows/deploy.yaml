@@ -4,21 +4,48 @@ on:
   push:
     branches: [ "main" ]
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/auth-service
+
 jobs:
-  build-deploy:
+  ci:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Login Docker Hub
-        run: echo "${{ secrets.DOCKER_PASS }}" | docker login -u "${{ secrets.DOCKER_USER }}" --password-stdin
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Login GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${REGISTRY} -u ${{ github.actor }} --password-stdin
 
       - name: Build & Push
         run: |
-          docker build -t ${{ secrets.DOCKER_USER }}/api:latest .
-          docker push ${{ secrets.DOCKER_USER }}/api:latest
+          IMAGE_TAG=${{ github.sha }}
+          docker build -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} -t ${REGISTRY}/${IMAGE_NAME}:latest .
+          docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+          docker push ${REGISTRY}/${IMAGE_NAME}:latest
 
       - name: Setup Kubeconfig
         run: |
@@ -27,5 +54,9 @@ jobs:
 
       - name: Deploy to K3s
         run: |
-          kubectl apply -f k8s/deployment.yaml
-          kubectl rollout restart deployment api
+          export REGISTRY=${REGISTRY}
+          export IMAGE_NAME=${IMAGE_NAME}
+          export IMAGE_TAG=${{ github.sha }}
+          envsubst < k8s/deployment.yaml | kubectl apply -f -
+          kubectl apply -f k8s/service.yaml
+          kubectl rollout status deployment auth-service

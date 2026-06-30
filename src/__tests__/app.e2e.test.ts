@@ -16,15 +16,11 @@ import {
   MockGoogleVerifier,
 } from './helpers';
 
-// ---------------------------------------------------------------------------
-// Build the full app with in-memory implementations for E2E testing
-// ---------------------------------------------------------------------------
+type Json = Record<string, unknown>;
 
 function buildTestApp() {
   const credentials = new InMemoryCredentialRepository();
   const refreshTokens = new InMemoryRefreshTokenRepository();
-  // Share the same repo instances with the UnitOfWork so register/google/refresh
-  // write to the same stores that login/logout/getMe read from.
   const uow = new InMemoryUnitOfWork({ credentials, refreshTokens });
   const hasher = new MockPasswordHasher();
   const tokenService = new MockTokenService();
@@ -33,12 +29,7 @@ function buildTestApp() {
   const deps: AppDependencies = {
     useCases: {
       register: new RegisterWithPasswordUseCase(uow, hasher, tokenService),
-      login: new LoginWithPasswordUseCase(
-        credentials,
-        refreshTokens,
-        hasher,
-        tokenService,
-      ),
+      login: new LoginWithPasswordUseCase(credentials, refreshTokens, hasher, tokenService),
       google: new LoginWithGoogleUseCase(googleVerifier, uow, tokenService),
       refresh: new RefreshTokenUseCase(uow, tokenService),
       logout: new LogoutUseCase(refreshTokens, tokenService),
@@ -50,7 +41,6 @@ function buildTestApp() {
 
   const app = createApp(deps);
 
-  // Test helpers
   const post = (path: string, body: unknown) =>
     app.fetch(
       new Request(`http://localhost${path}`, {
@@ -66,7 +56,17 @@ function buildTestApp() {
     return app.fetch(new Request(`http://localhost${path}`, { method: 'GET', headers }));
   };
 
-  return { app, post, get, uow, credentials, refreshTokens, hasher, tokenService, googleVerifier };
+  async function postJson(path: string, body: unknown): Promise<{ status: number; json: Json }> {
+    const res = await post(path, body);
+    return { status: res.status, json: await res.json() as Json };
+  }
+
+  async function getJson(path: string, token?: string): Promise<{ status: number; json: Json }> {
+    const res = await get(path, token);
+    return { status: res.status, json: await res.json() as Json };
+  }
+
+  return { app, post, get, postJson, getJson, uow, credentials, refreshTokens, hasher, tokenService, googleVerifier };
 }
 
 describe('E2E: Auth API', () => {
@@ -81,74 +81,59 @@ describe('E2E: Auth API', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // Health
-  // -----------------------------------------------------------------------
-
   describe('GET /health', () => {
     it('returns ok', async () => {
       const res = await t.app.fetch(new Request('http://localhost/health'));
       expect(res.status).toBe(200);
-      const body = await res.json();
+      const body = await res.json() as Json;
       expect(body).toEqual({ status: 'ok' });
     });
   });
 
-  // -----------------------------------------------------------------------
-  // Register
-  // -----------------------------------------------------------------------
-
   describe('POST /auth/register', () => {
     it('registers a new user and returns 201', async () => {
-      const res = await t.post('/auth/register', {
+      const { status, json } = await t.postJson('/auth/register', {
         email: 'new@test.com',
         password: 'Secure123!',
       });
 
-      expect(res.status).toBe(201);
-      const body = await res.json();
-      expect(body.accessToken).toBeTruthy();
-      expect(body.tokenType).toBe('Bearer');
-      expect(body.user.email).toBe('new@test.com');
+      expect(status).toBe(201);
+      expect(json.accessToken).toBeTruthy();
+      expect(json.tokenType).toBe('Bearer');
+      expect((json.user as Json).email).toBe('new@test.com');
     });
 
     it('returns 422 for invalid email', async () => {
-      const res = await t.post('/auth/register', {
+      const { status, json } = await t.postJson('/auth/register', {
         email: 'not-an-email',
         password: 'Secure123!',
       });
 
-      expect(res.status).toBe(422);
-      const body = await res.json();
-      expect(body.code).toBe('VALIDATION_ERROR');
+      expect(status).toBe(422);
+      expect(json.code).toBe('VALIDATION_ERROR');
     });
 
     it('returns 422 for short password', async () => {
-      const res = await t.post('/auth/register', {
+      const { status } = await t.postJson('/auth/register', {
         email: 'test@test.com',
         password: '1234567',
       });
 
-      expect(res.status).toBe(422);
+      expect(status).toBe(422);
     });
 
     it('returns 409 for duplicate email', async () => {
       await t.post('/auth/register', { email: 'dup@test.com', password: 'Secure123!' });
 
-      const res = await t.post('/auth/register', {
+      const { status, json } = await t.postJson('/auth/register', {
         email: 'dup@test.com',
         password: 'OtherPass1',
       });
 
-      expect(res.status).toBe(409);
-      const body = await res.json();
-      expect(body.code).toBe('EMAIL_ALREADY_EXISTS');
+      expect(status).toBe(409);
+      expect(json.code).toBe('EMAIL_ALREADY_EXISTS');
     });
   });
-
-  // -----------------------------------------------------------------------
-  // Login
-  // -----------------------------------------------------------------------
 
   describe('POST /auth/login', () => {
     beforeEach(async () => {
@@ -156,92 +141,76 @@ describe('E2E: Auth API', () => {
     });
 
     it('logs in with valid credentials', async () => {
-      const res = await t.post('/auth/login', { email: 'login@test.com', password: 'MyPassword1' });
+      const { status, json } = await t.postJson('/auth/login', { email: 'login@test.com', password: 'MyPassword1' });
 
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.accessToken).toBeTruthy();
-      expect(body.refreshToken).toBeTruthy();
+      expect(status).toBe(200);
+      expect(json.accessToken).toBeTruthy();
+      expect(json.refreshToken).toBeTruthy();
     });
 
     it('returns 401 for wrong password', async () => {
-      const res = await t.post('/auth/login', { email: 'login@test.com', password: 'WrongPassword' });
+      const { status, json } = await t.postJson('/auth/login', { email: 'login@test.com', password: 'WrongPassword' });
 
-      expect(res.status).toBe(401);
-      const body = await res.json();
-      expect(body.code).toBe('INVALID_CREDENTIALS');
+      expect(status).toBe(401);
+      expect(json.code).toBe('INVALID_CREDENTIALS');
     });
 
     it('returns 401 for non-existent email', async () => {
-      const res = await t.post('/auth/login', { email: 'nobody@test.com', password: 'any' });
+      const { status } = await t.postJson('/auth/login', { email: 'nobody@test.com', password: 'any' });
 
-      expect(res.status).toBe(401);
+      expect(status).toBe(401);
     });
 
     it('returns 422 for missing fields', async () => {
-      const res = await t.post('/auth/login', { email: 'test@test.com' });
+      const { status } = await t.postJson('/auth/login', { email: 'test@test.com' });
 
-      expect(res.status).toBe(422);
+      expect(status).toBe(422);
     });
   });
-
-  // -----------------------------------------------------------------------
-  // Google Auth
-  // -----------------------------------------------------------------------
 
   describe('POST /auth/google', () => {
     it('logs in with valid google token', async () => {
-      const res = await t.post('/auth/google', { idToken: 'google-id-token' });
+      const { status, json } = await t.postJson('/auth/google', { idToken: 'google-id-token' });
 
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.user.email).toBe('googleuser@gmail.com');
-      expect(body.user.authProvider).toBe('google');
+      expect(status).toBe(200);
+      expect((json.user as Json).email).toBe('googleuser@gmail.com');
+      expect((json.user as Json).authProvider).toBe('google');
     });
 
     it('returns 401 for invalid google token', async () => {
-      const res = await t.post('/auth/google', { idToken: 'invalid-token' });
+      const { status } = await t.postJson('/auth/google', { idToken: 'invalid-token' });
 
-      expect(res.status).toBe(401);
+      expect(status).toBe(401);
     });
 
     it('returns 422 for missing idToken', async () => {
-      const res = await t.post('/auth/google', {});
+      const { status } = await t.postJson('/auth/google', {});
 
-      expect(res.status).toBe(422);
+      expect(status).toBe(422);
     });
   });
-
-  // -----------------------------------------------------------------------
-  // Refresh
-  // -----------------------------------------------------------------------
 
   describe('POST /auth/refresh', () => {
     it('rotates tokens', async () => {
-      const reg = await (await t.post('/auth/register', { email: 'ref@test.com', password: 'Secure123!' })).json();
+      const reg = await (await t.post('/auth/register', { email: 'ref@test.com', password: 'Secure123!' })).json() as Json;
 
-      const res = await t.post('/auth/refresh', { refreshToken: reg.refreshToken });
+      const { status, json } = await t.postJson('/auth/refresh', { refreshToken: reg.refreshToken });
 
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.accessToken).toBeTruthy();
-      expect(body.refreshToken).not.toBe(reg.refreshToken);
+      expect(status).toBe(200);
+      expect(json.accessToken).toBeTruthy();
+      expect((json as Json).refreshToken).not.toBe(reg.refreshToken);
     });
 
     it('returns 401 for invalid refresh token', async () => {
-      const res = await t.post('/auth/refresh', { refreshToken: 'totally-fake' });
+      const { status } = await t.postJson('/auth/refresh', { refreshToken: 'totally-fake' });
 
-      expect(res.status).toBe(401);
+      expect(status).toBe(401);
     });
   });
 
-  // -----------------------------------------------------------------------
-  // Logout
-  // -----------------------------------------------------------------------
-
   describe('POST /auth/logout', () => {
     it('logs out successfully', async () => {
-      const reg = await (await t.post('/auth/register', { email: 'out@test.com', password: 'Secure123!' })).json();
+      const reg = await (await t.post('/auth/register', { email: 'out@test.com', password: 'Secure123!' })).json() as Json;
 
       const res = await t.post('/auth/logout', { refreshToken: reg.refreshToken });
 
@@ -255,46 +224,36 @@ describe('E2E: Auth API', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // Get Me
-  // -----------------------------------------------------------------------
-
   describe('GET /auth/me', () => {
     it('returns user data with valid access token', async () => {
-      const reg = await (await t.post('/auth/register', { email: 'me@test.com', password: 'Secure123!' })).json();
+      const reg = await (await t.post('/auth/register', { email: 'me@test.com', password: 'Secure123!' })).json() as Json;
 
-      const res = await t.get('/auth/me', reg.accessToken);
+      const { status, json } = await t.getJson('/auth/me', reg.accessToken as string);
 
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.email).toBe('me@test.com');
-      expect(body.id).toBeTruthy();
+      expect(status).toBe(200);
+      expect(json.email).toBe('me@test.com');
+      expect(json.id).toBeTruthy();
     });
 
     it('returns 401 without token', async () => {
-      const res = await t.get('/auth/me');
+      const { status, json } = await t.getJson('/auth/me');
 
-      expect(res.status).toBe(401);
-      const body = await res.json();
-      expect(body.code).toBe('UNAUTHORIZED');
+      expect(status).toBe(401);
+      expect(json.code).toBe('UNAUTHORIZED');
     });
 
     it('returns 401 with invalid token', async () => {
-      const res = await t.get('/auth/me', 'bad-token');
+      const { status } = await t.getJson('/auth/me', 'bad-token');
 
-      expect(res.status).toBe(401);
+      expect(status).toBe(401);
     });
   });
-
-  // -----------------------------------------------------------------------
-  // Not Found
-  // -----------------------------------------------------------------------
 
   describe('404 handling', () => {
     it('returns 404 for unknown routes', async () => {
       const res = await t.app.fetch(new Request('http://localhost/nonexistent'));
       expect(res.status).toBe(404);
-      const body = await res.json();
+      const body = await res.json() as Json;
       expect(body.code).toBe('NOT_FOUND');
     });
   });
