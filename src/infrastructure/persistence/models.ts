@@ -6,7 +6,9 @@ import { sequelize } from './sequelize';
  * `auth_db`. Los repositorios convierten entre estos modelos y las entidades
  * de dominio; el resto de la app no debería importar estos modelos.
  *
- * `underscored: true` (definido en la conexión) hace que createdAt -> created_at, etc.
+ * `underscored: true` (definido en la conexión) usa snake_case en columnas.
+ * Las marcas de tiempo se gestionan de forma explícita (timestamps: false):
+ * las entidades y repositorios setean created_at/updated_at.
  */
 
 export class CredentialModel extends Model<
@@ -34,7 +36,7 @@ CredentialModel.init(
     created_at: DataTypes.DATE,
     updated_at: DataTypes.DATE,
   },
-  { sequelize, tableName: 'credentials', timestamps: true },
+  { sequelize, tableName: 'credentials', timestamps: false },
 );
 
 export class OAuthAccountModel extends Model<
@@ -61,8 +63,7 @@ OAuthAccountModel.init(
   {
     sequelize,
     tableName: 'oauth_accounts',
-    timestamps: true,
-    updatedAt: false,
+    timestamps: false,
     indexes: [{ unique: true, fields: ['provider', 'provider_user_id'] }],
   },
 );
@@ -97,8 +98,7 @@ RefreshTokenModel.init(
   {
     sequelize,
     tableName: 'refresh_tokens',
-    timestamps: true,
-    updatedAt: false,
+    timestamps: false,
     indexes: [{ fields: ['credential_id'] }],
   },
 );

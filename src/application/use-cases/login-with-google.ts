@@ -1,6 +1,7 @@
 import { Credential, OAuthAccount } from '../../domain/entities';
 import { Email } from '../../domain/value-objects';
 import { AccountDisabledError } from '../../domain/errors';
+import { Repositories } from '../../domain/repositories';
 import { GoogleIdTokenVerifier, TokenService, UnitOfWork } from '../ports';
 import { GoogleAuthInput, SessionOutput } from '../dtos';
 import { issueSession } from '../session';
@@ -97,7 +98,7 @@ export class LoginWithGoogleUseCase {
 
   /** Crea credencial (sin contraseña) + vínculo OAuth + evento, y emite sesión. */
   private async createLinkedAccount(
-    repos: Parameters<Parameters<UnitOfWork['execute']>[0]>[0],
+    repos: Repositories,
     email: Email,
     providerUserId: string,
     emailVerified: boolean,
