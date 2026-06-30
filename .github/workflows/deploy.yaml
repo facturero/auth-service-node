@@ -1,0 +1,31 @@
+name: CI/CD Deploy to K3s
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login Docker Hub
+        run: echo "${{ secrets.DOCKER_PASS }}" | docker login -u "${{ secrets.DOCKER_USER }}" --password-stdin
+
+      - name: Build & Push
+        run: |
+          docker build -t ${{ secrets.DOCKER_USER }}/api:latest .
+          docker push ${{ secrets.DOCKER_USER }}/api:latest
+
+      - name: Setup Kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
+
+      - name: Deploy to K3s
+        run: |
+          kubectl apply -f k8s/deployment.yaml
+          kubectl rollout restart deployment api
