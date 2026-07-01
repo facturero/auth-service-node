@@ -20,6 +20,7 @@ import { createApp } from './interface/http/app';
  * concretas y se inyectan en los casos de uso y la app. El resto del código
  * depende de abstracciones.
  */
+
 async function main(): Promise<void> {
   await sequelize.authenticate();
 
