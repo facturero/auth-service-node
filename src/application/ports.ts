@@ -12,8 +12,24 @@ export interface PasswordHasher {
 }
 
 export interface AccessTokenClaims {
-  sub: string; // user_id
+  sub: string;            // user_id
   email: string;
+  orgId: string | null;         // organización activa (null si no tiene membership)
+  countryCode: string | null;   // país de la org activa
+  permissions: string[];        // ['customer:read', ...]
+  pv: number;                   // permissions_version
+}
+
+export interface AccessContext {
+  orgId: string | null;
+  countryCode: string | null;
+  permissions: string[];
+  pv: number;
+}
+
+export interface AccessContextResolver {
+  /** Resuelve el contexto de acceso del usuario para su organización activa. */
+  resolve(userId: string, preferredOrgId?: string | null): Promise<AccessContext>;
 }
 
 export interface IssuedAccessToken {

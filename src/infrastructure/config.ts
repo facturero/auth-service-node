@@ -36,6 +36,8 @@ const schema = z.object({
   GOOGLE_CLIENT_ID: z.string().min(1),
 
   CORS_ORIGIN: z.string().default('*'),
+
+  RABBITMQ_URL: z.string().optional(),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -90,6 +92,7 @@ export interface AppConfig {
   JWT_AUDIENCE: string;
   GOOGLE_CLIENT_ID: string;
   CORS_ORIGIN: string;
+  RABBITMQ_URL?: string;
 }
 
 export const config: AppConfig = {
@@ -108,4 +111,5 @@ export const config: AppConfig = {
   JWT_AUDIENCE: env.JWT_AUDIENCE,
   GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID,
   CORS_ORIGIN: env.CORS_ORIGIN,
+  RABBITMQ_URL: env.RABBITMQ_URL,
 };

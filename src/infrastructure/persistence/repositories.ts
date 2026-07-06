@@ -1,20 +1,35 @@
 import { randomUUID } from 'node:crypto';
-import { Transaction } from 'sequelize';
+import { QueryTypes, Transaction } from 'sequelize';
 import { sequelize } from './sequelize';
 import {
   CredentialModel,
+  MembershipModel,
   OAuthAccountModel,
+  OrganizationModel,
   OutboxModel,
+  PermissionModel,
   RefreshTokenModel,
+  RoleModel,
+  RolePermissionModel,
+  UserModel,
+  UserRoleModel,
 } from './models';
 import { Credential, OAuthAccount, OAuthProvider, RefreshToken } from '../../domain/entities';
+import { User, Organization, Role, Permission, Membership, UserRole } from '../../domain/rbac';
 import {
+  AccessQuery,
   CredentialRepository,
   DomainEvent,
+  MembershipRepository,
   OAuthAccountRepository,
+  OrganizationRepository,
   OutboxRepository,
+  PermissionRepository,
   RefreshTokenRepository,
   Repositories,
+  RoleRepository,
+  UserRepository,
+  UserRoleRepository,
 } from '../../domain/repositories';
 import { UnitOfWork } from '../../application/ports';
 
@@ -164,6 +179,300 @@ function outboxRepository(tx?: Transaction): OutboxRepository {
   };
 }
 
+// --------------------------- RBAC Mappers ------------------------------------
+
+function toUser(m: UserModel): User {
+  return User.fromPersistence({
+    id: m.id,
+    email: m.email,
+    identification: m.identification,
+    fullName: m.full_name,
+    status: m.status,
+    isPlatformAdmin: m.is_platform_admin,
+    permissionsVersion: m.permissions_version,
+    createdAt: m.created_at,
+    updatedAt: m.updated_at,
+  });
+}
+
+function toOrganization(m: OrganizationModel): Organization {
+  return Organization.fromPersistence({
+    id: m.id,
+    countryCode: m.country_code,
+    createdAt: m.created_at,
+    updatedAt: m.updated_at,
+  });
+}
+
+function toRole(m: RoleModel): Role {
+  return Role.fromPersistence({
+    id: m.id,
+    organizationId: m.organization_id,
+    name: m.name,
+    description: m.description,
+    isSystem: m.is_system,
+    createdAt: m.created_at,
+    updatedAt: m.updated_at,
+  });
+}
+
+function toPermission(m: PermissionModel): Permission {
+  return Permission.fromPersistence({
+    id: m.id,
+    code: m.code,
+    resource: m.resource,
+    action: m.action,
+    description: m.description,
+  });
+}
+
+function toMembership(m: MembershipModel): Membership {
+  return Membership.fromPersistence({
+    id: m.id,
+    userId: m.user_id,
+    organizationId: m.organization_id,
+    status: m.status,
+    createdAt: m.created_at,
+    updatedAt: m.updated_at,
+  });
+}
+
+function toUserRole(m: UserRoleModel): UserRole {
+  return UserRole.fromPersistence({
+    id: m.id,
+    userId: m.user_id,
+    organizationId: m.organization_id,
+    roleId: m.role_id,
+    createdAt: m.created_at,
+  });
+}
+
+// --------------------------- RBAC Repositorios -------------------------------
+
+function userRepository(tx?: Transaction): UserRepository {
+  return {
+    async findById(id) {
+      const m = await UserModel.findByPk(id, { transaction: tx });
+      return m ? toUser(m) : null;
+    },
+    async findByEmail(email) {
+      const m = await UserModel.findOne({ where: { email }, transaction: tx });
+      return m ? toUser(m) : null;
+    },
+    async findByIdentification(identification) {
+      const m = await UserModel.findOne({ where: { identification }, transaction: tx });
+      return m ? toUser(m) : null;
+    },
+    async save(user) {
+      const p = user.toPersistence();
+      await UserModel.upsert(
+        {
+          id: p.id,
+          email: p.email,
+          identification: p.identification,
+          full_name: p.fullName,
+          status: p.status,
+          is_platform_admin: p.isPlatformAdmin,
+          permissions_version: p.permissionsVersion,
+          created_at: p.createdAt,
+          updated_at: new Date(),
+        },
+        { transaction: tx },
+      );
+    },
+    async incrementPermissionsVersion(userId) {
+      await UserModel.increment('permissions_version', {
+        by: 1,
+        where: { id: userId },
+        transaction: tx,
+      });
+    },
+    async listByOrganization(organizationId) {
+      const rows = await sequelize.query<UserModel>(
+        `SELECT u.* FROM users u
+          JOIN organization_memberships om ON om.user_id = u.id
+         WHERE om.organization_id = :organizationId`,
+        { replacements: { organizationId }, type: QueryTypes.SELECT, transaction: tx },
+      );
+      return rows.map(toUser);
+    },
+  };
+}
+
+function roleRepository(tx?: Transaction): RoleRepository {
+  return {
+    async findById(id) {
+      const m = await RoleModel.findByPk(id, { transaction: tx });
+      return m ? toRole(m) : null;
+    },
+    async findTemplates() {
+      const rows = await RoleModel.findAll({ where: { organization_id: null }, transaction: tx });
+      return rows.map(toRole);
+    },
+    async findByOrganization(organizationId) {
+      const rows = await RoleModel.findAll({ where: { organization_id: organizationId }, transaction: tx });
+      return rows.map(toRole);
+    },
+    async save(role) {
+      const p = role.toPersistence();
+      await RoleModel.upsert(
+        {
+          id: p.id,
+          organization_id: p.organizationId,
+          name: p.name,
+          description: p.description,
+          is_system: p.isSystem,
+          created_at: p.createdAt,
+          updated_at: new Date(),
+        },
+        { transaction: tx },
+      );
+    },
+    async setPermissions(roleId, permissionIds) {
+      await RolePermissionModel.destroy({ where: { role_id: roleId }, transaction: tx });
+      if (permissionIds.length > 0) {
+        await RolePermissionModel.bulkCreate(
+          permissionIds.map((permissionId) => ({ role_id: roleId, permission_id: permissionId })),
+          { transaction: tx },
+        );
+      }
+    },
+  };
+}
+
+function permissionRepository(tx?: Transaction): PermissionRepository {
+  return {
+    async findAll() {
+      const rows = await PermissionModel.findAll({ transaction: tx });
+      return rows.map(toPermission);
+    },
+    async findIdsByCodes(codes) {
+      const rows = await PermissionModel.findAll({
+        where: { code: codes },
+        attributes: ['id', 'code'],
+        transaction: tx,
+      });
+      return rows.map((r) => r.id);
+    },
+  };
+}
+
+function membershipRepository(tx?: Transaction): MembershipRepository {
+  return {
+    async find(userId, organizationId) {
+      const m = await MembershipModel.findOne({
+        where: { user_id: userId, organization_id: organizationId },
+        transaction: tx,
+      });
+      return m ? toMembership(m) : null;
+    },
+    async listActiveByUser(userId) {
+      const rows = await MembershipModel.findAll({
+        where: { user_id: userId, status: 'active' },
+        transaction: tx,
+      });
+      return rows.map(toMembership);
+    },
+    async save(m) {
+      const p = m.toPersistence();
+      await MembershipModel.upsert(
+        {
+          id: p.id,
+          user_id: p.userId,
+          organization_id: p.organizationId,
+          status: p.status,
+          created_at: p.createdAt,
+          updated_at: new Date(),
+        },
+        { transaction: tx },
+      );
+    },
+  };
+}
+
+function userRoleRepository(tx?: Transaction): UserRoleRepository {
+  return {
+    async assign(userRole) {
+      const p = userRole.toPersistence();
+      await UserRoleModel.create(
+        {
+          id: p.id,
+          user_id: p.userId,
+          organization_id: p.organizationId,
+          role_id: p.roleId,
+          created_at: p.createdAt,
+        },
+        { transaction: tx },
+      );
+    },
+    async remove(userId, organizationId, roleId) {
+      await UserRoleModel.destroy({
+        where: { user_id: userId, organization_id: organizationId, role_id: roleId },
+        transaction: tx,
+      });
+    },
+    async listByUserAndOrg(userId, organizationId) {
+      const rows = await UserRoleModel.findAll({
+        where: { user_id: userId, organization_id: organizationId },
+        transaction: tx,
+      });
+      return rows.map(toUserRole);
+    },
+    async listUserIdsByRole(roleId) {
+      const rows = await UserRoleModel.findAll({
+        where: { role_id: roleId },
+        attributes: ['user_id'],
+        transaction: tx,
+      });
+      return rows.map((r) => r.user_id);
+    },
+  };
+}
+
+// --------------------------- AccessQuery -------------------------------------
+
+export const sequelizeAccessQuery: AccessQuery = {
+  async effectivePermissions(userId, organizationId) {
+    const rows = await sequelize.query<{ code: string }>(
+      `SELECT DISTINCT p.code
+         FROM user_roles ur
+         JOIN role_permissions rp ON rp.role_id = ur.role_id
+         JOIN permissions p       ON p.id = rp.permission_id
+        WHERE ur.user_id = :userId AND ur.organization_id = :organizationId`,
+      { replacements: { userId, organizationId }, type: QueryTypes.SELECT },
+    );
+    return rows.map((r) => r.code);
+  },
+  async countryCodeOf(organizationId) {
+    const rows = await sequelize.query<{ country_code: string | null }>(
+      `SELECT country_code FROM organizations WHERE id = :organizationId LIMIT 1`,
+      { replacements: { organizationId }, type: QueryTypes.SELECT },
+    );
+    return rows[0]?.country_code ?? null;
+  },
+};
+
+function organizationRepository(tx?: Transaction): OrganizationRepository {
+  return {
+    async findById(id) {
+      const m = await OrganizationModel.findByPk(id, { transaction: tx });
+      return m ? toOrganization(m) : null;
+    },
+    async save(org) {
+      const p = org.toPersistence();
+      await OrganizationModel.upsert(
+        {
+          id: p.id,
+          country_code: p.countryCode,
+          created_at: p.createdAt,
+          updated_at: new Date(),
+        },
+        { transaction: tx },
+      );
+    },
+  };
+}
+
 /** Construye el conjunto de repositorios, opcionalmente ligados a una transacción. */
 export function buildRepositories(tx?: Transaction): Repositories {
   return {
@@ -171,6 +480,12 @@ export function buildRepositories(tx?: Transaction): Repositories {
     oauthAccounts: oauthAccountRepository(tx),
     refreshTokens: refreshTokenRepository(tx),
     outbox: outboxRepository(tx),
+    users: userRepository(tx),
+    organizations: organizationRepository(tx),
+    roles: roleRepository(tx),
+    permissions: permissionRepository(tx),
+    memberships: membershipRepository(tx),
+    userRoles: userRoleRepository(tx),
   };
 }
 

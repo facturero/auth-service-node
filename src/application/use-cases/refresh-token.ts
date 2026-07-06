@@ -1,5 +1,5 @@
 import { InvalidRefreshTokenError, AccountDisabledError } from '../../domain/errors';
-import { TokenService, UnitOfWork } from '../ports';
+import { AccessContextResolver, TokenService, UnitOfWork } from '../ports';
 import { RefreshInput, SessionOutput } from '../dtos';
 import { issueSession } from '../session';
 
@@ -12,6 +12,7 @@ export class RefreshTokenUseCase {
   constructor(
     private readonly uow: UnitOfWork,
     private readonly tokenService: TokenService,
+    private readonly accessContext: AccessContextResolver,
   ) {}
 
   async execute(input: RefreshInput): Promise<SessionOutput> {
@@ -37,6 +38,7 @@ export class RefreshTokenUseCase {
         tokenService: this.tokenService,
         refreshTokens: repos.refreshTokens,
         authProvider: credential.hasPassword() ? 'password' : 'google',
+        accessContext: this.accessContext,
         userAgent: input.userAgent,
         ip: input.ip,
       });

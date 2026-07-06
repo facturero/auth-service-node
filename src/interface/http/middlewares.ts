@@ -1,6 +1,6 @@
 import { Context, MiddlewareHandler } from 'hono';
 import { TokenService } from '../../application/ports';
-import { AppError, UnauthorizedError } from '../../domain/errors';
+import { AppError, ForbiddenError, UnauthorizedError } from '../../domain/errors';
 
 /**
  * Variables que el middleware de auth deja disponibles en el contexto Hono.
@@ -8,11 +8,14 @@ import { AppError, UnauthorizedError } from '../../domain/errors';
 export type AuthVariables = {
   userId: string;
   email: string;
+  orgId: string | null;
+  permissions: string[];
+  pv: number;
 };
 
 /**
  * Middleware de autenticación: exige `Authorization: Bearer <accessToken>`,
- * verifica el JWT y expone userId/email en el contexto.
+ * verifica el JWT y expone userId/email/orgId/permissions/pv en el contexto.
  */
 export function makeAuthMiddleware(tokenService: TokenService): MiddlewareHandler<{
   Variables: AuthVariables;
@@ -26,6 +29,17 @@ export function makeAuthMiddleware(tokenService: TokenService): MiddlewareHandle
     const claims = await tokenService.verifyAccessToken(token);
     c.set('userId', claims.sub);
     c.set('email', claims.email);
+    c.set('orgId', claims.orgId);
+    c.set('permissions', claims.permissions);
+    c.set('pv', claims.pv);
+    await next();
+  };
+}
+
+export function requirePermission(perm: string): MiddlewareHandler<{ Variables: AuthVariables }> {
+  return async (c, next) => {
+    const perms = c.get('permissions') ?? [];
+    if (!perms.includes(perm)) throw new ForbiddenError();
     await next();
   };
 }

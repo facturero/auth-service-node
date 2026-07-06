@@ -30,7 +30,14 @@ class JwtTokenService implements TokenService {
   ) {}
 
   async issueAccessToken(claims: AccessTokenClaims): Promise<IssuedAccessToken> {
-    const token = await new SignJWT({ email: claims.email, token_use: 'access' })
+    const token = await new SignJWT({
+      email: claims.email,
+      org_id: claims.orgId ?? null,
+      country_code: claims.countryCode ?? null,
+      permissions: claims.permissions ?? [],
+      pv: claims.pv ?? 0,
+      token_use: 'access',
+    })
       .setProtectedHeader({ alg: ALG, typ: 'JWT' })
       .setSubject(claims.sub)
       .setIssuer(this.cfg.JWT_ISSUER)
@@ -51,7 +58,14 @@ class JwtTokenService implements TokenService {
       if (!payload.sub || typeof payload.email !== 'string') {
         throw new UnauthorizedError();
       }
-      return { sub: payload.sub, email: payload.email };
+      return {
+        sub: payload.sub,
+        email: payload.email as string,
+        orgId: (payload.org_id as string | null) ?? null,
+        countryCode: (payload.country_code as string | null) ?? null,
+        permissions: Array.isArray(payload.permissions) ? payload.permissions as string[] : [],
+        pv: typeof payload.pv === 'number' ? payload.pv : 0,
+      };
     } catch {
       throw new UnauthorizedError();
     }

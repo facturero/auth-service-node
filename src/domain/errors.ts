@@ -46,6 +46,22 @@ export class EmailAlreadyExistsError extends AppError {
   }
 }
 
+export class InvalidIdentificationError extends AppError {
+  readonly code = 'INVALID_IDENTIFICATION';
+  readonly httpStatus = 422;
+  constructor(message = 'La identificación no es válida.') {
+    super(message);
+  }
+}
+
+export class IdentificationAlreadyExistsError extends AppError {
+  readonly code = 'IDENTIFICATION_ALREADY_EXISTS';
+  readonly httpStatus = 409;
+  constructor(message = 'La cédula ya está registrada.') {
+    super(message);
+  }
+}
+
 export class InvalidCredentialsError extends AppError {
   readonly code = 'INVALID_CREDENTIALS';
   readonly httpStatus = 401;
@@ -84,4 +100,37 @@ export class UnauthorizedError extends AppError {
   constructor(message = 'Token ausente o inválido.') {
     super(message);
   }
+}
+
+export class ForbiddenError extends AppError {
+  readonly code = 'FORBIDDEN';
+  readonly httpStatus = 403;
+  constructor(message = 'Permiso insuficiente.') { super(message); }
+}
+
+export class UserNotFoundError extends AppError {
+  readonly code = 'USER_NOT_FOUND'; readonly httpStatus = 404;
+  constructor(message = 'Usuario no encontrado.') { super(message); }
+}
+
+export class RoleNotFoundError extends AppError {
+  readonly code = 'ROLE_NOT_FOUND'; readonly httpStatus = 404;
+  constructor(message = 'Rol no encontrado.') { super(message); }
+}
+
+export class NotOrganizationMemberError extends AppError {
+  readonly code = 'NOT_ORG_MEMBER'; readonly httpStatus = 403;
+  constructor(message = 'El usuario no pertenece a esa organización.') { super(message); }
+}
+
+export class NoActiveOrganizationError extends AppError {
+  readonly code = 'NO_ACTIVE_ORGANIZATION';
+  readonly httpStatus = 409;
+  constructor(message = 'El usuario no tiene una organización activa.') { super(message); }
+}
+
+export class LastAdminRemovalError extends AppError {
+  readonly code = 'LAST_ADMIN_REMOVAL';
+  readonly httpStatus = 409;
+  constructor(message = 'No se puede eliminar el último administrador de la organización.') { super(message); }
 }

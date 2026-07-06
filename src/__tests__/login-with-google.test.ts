@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { LoginWithGoogleUseCase } from '../application/use-cases/login-with-google';
+import { SeedOrganizationRolesUseCase } from '../application/use-cases/seed-organization-roles';
 import { Email } from '../domain/value-objects';
 import { Credential } from '../domain/entities';
 import {
   InMemoryUnitOfWork,
+  MockAccessContextResolver,
   MockTokenService,
   MockGoogleVerifier,
 } from './helpers';
@@ -13,7 +15,9 @@ describe('LoginWithGoogleUseCase', () => {
   let uow: InMemoryUnitOfWork;
   let tokenService: MockTokenService;
   let googleVerifier: MockGoogleVerifier;
+  let accessContext: MockAccessContextResolver;
   let useCase: LoginWithGoogleUseCase;
+  let seedOrg: SeedOrganizationRolesUseCase;
 
   const googleProfile = {
     sub: 'google-sub-123',
@@ -27,7 +31,9 @@ describe('LoginWithGoogleUseCase', () => {
     tokenService = new MockTokenService();
     googleVerifier = new MockGoogleVerifier();
     googleVerifier.setProfile('valid-token', googleProfile);
-    useCase = new LoginWithGoogleUseCase(googleVerifier, uow, tokenService);
+    accessContext = new MockAccessContextResolver();
+    seedOrg = new SeedOrganizationRolesUseCase(uow);
+    useCase = new LoginWithGoogleUseCase(googleVerifier, uow, tokenService, accessContext, seedOrg);
   });
 
   it('creates a new account when no existing link is found', async () => {
@@ -101,7 +107,7 @@ describe('LoginWithGoogleUseCase', () => {
     await useCase.execute({ idToken: 'valid-token' });
 
     expect(uow.outbox.events).toHaveLength(1);
-    expect(uow.outbox.events[0].type).toBe('auth.credential.registered');
-    expect(uow.outbox.events[0].payload.provider).toBe('google');
+    expect(uow.outbox.events[0].type).toBe('identity.user.created');
+    expect(uow.outbox.events[0].payload.email).toBe('googleuser@gmail.com');
   });
 });

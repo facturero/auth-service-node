@@ -13,11 +13,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate": "sequelize-cli db:migrate",
-    "db:migrate:undo": "sequelize-cli db:migrate:undo"
+    "db:migrate:undo": "sequelize-cli db:migrate:undo",
+    "seed:org": "tsx src/infrastructure/cli/seed-org.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.14",
     "@hono/zod-validator": "^0.4.1",
+    "amqplib": "^2.0.1",
     "argon2": "^0.41.1",
     "dotenv": "^16.4.7",
     "google-auth-library": "^9.15.0",

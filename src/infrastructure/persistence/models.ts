@@ -134,8 +134,189 @@ OutboxModel.init(
   },
 );
 
-// Asociaciones (solo a nivel de modelo; no se usan JOINs entre servicios).
+// ---------------------------------------------------------------------------
+// RBAC models
+// ---------------------------------------------------------------------------
+
+export class UserModel extends Model<
+  InferAttributes<UserModel>,
+  InferCreationAttributes<UserModel>
+> {
+  declare id: string;
+  declare email: string;
+  declare identification: string | null;
+  declare full_name: string | null;
+  declare status: 'active' | 'disabled';
+  declare is_platform_admin: boolean;
+  declare permissions_version: number;
+  declare created_at: Date;
+  declare updated_at: Date;
+}
+
+UserModel.init(
+  {
+    id: { type: DataTypes.CHAR(36), primaryKey: true },
+    email: { type: DataTypes.STRING(255), allowNull: false, unique: true },
+    identification: { type: DataTypes.STRING(20), allowNull: true, unique: true },
+    full_name: { type: DataTypes.STRING(255), allowNull: true },
+    status: { type: DataTypes.ENUM('active', 'disabled'), allowNull: false, defaultValue: 'active' },
+    is_platform_admin: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    permissions_version: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    created_at: DataTypes.DATE,
+    updated_at: DataTypes.DATE,
+  },
+  { sequelize, tableName: 'users', timestamps: false },
+);
+
+export class OrganizationModel extends Model<
+  InferAttributes<OrganizationModel>,
+  InferCreationAttributes<OrganizationModel>
+> {
+  declare id: string;
+  declare country_code: string | null;
+  declare created_at: Date;
+  declare updated_at: Date;
+}
+
+OrganizationModel.init(
+  {
+    id: { type: DataTypes.CHAR(36), primaryKey: true },
+    country_code: { type: DataTypes.STRING(2), allowNull: true },
+    created_at: DataTypes.DATE,
+    updated_at: DataTypes.DATE,
+  },
+  { sequelize, tableName: 'organizations', timestamps: false },
+);
+
+export class PermissionModel extends Model<
+  InferAttributes<PermissionModel>,
+  InferCreationAttributes<PermissionModel>
+> {
+  declare id: string;
+  declare code: string;
+  declare resource: string;
+  declare action: string;
+  declare description: string | null;
+}
+
+PermissionModel.init(
+  {
+    id: { type: DataTypes.CHAR(36), primaryKey: true },
+    code: { type: DataTypes.STRING(100), allowNull: false, unique: true },
+    resource: { type: DataTypes.STRING(50), allowNull: false },
+    action: { type: DataTypes.STRING(50), allowNull: false },
+    description: { type: DataTypes.STRING(255), allowNull: true },
+  },
+  { sequelize, tableName: 'permissions', timestamps: false },
+);
+
+export class RoleModel extends Model<
+  InferAttributes<RoleModel>,
+  InferCreationAttributes<RoleModel>
+> {
+  declare id: string;
+  declare organization_id: string | null;
+  declare name: string;
+  declare description: string | null;
+  declare is_system: boolean;
+  declare created_at: Date;
+  declare updated_at: Date;
+}
+
+RoleModel.init(
+  {
+    id: { type: DataTypes.CHAR(36), primaryKey: true },
+    organization_id: { type: DataTypes.CHAR(36), allowNull: true },
+    name: { type: DataTypes.STRING(100), allowNull: false },
+    description: { type: DataTypes.STRING(255), allowNull: true },
+    is_system: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    created_at: DataTypes.DATE,
+    updated_at: DataTypes.DATE,
+  },
+  {
+    sequelize,
+    tableName: 'roles',
+    timestamps: false,
+    indexes: [{ unique: true, fields: ['organization_id', 'name'] }],
+  },
+);
+
+export class RolePermissionModel extends Model<
+  InferAttributes<RolePermissionModel>,
+  InferCreationAttributes<RolePermissionModel>
+> {
+  declare role_id: string;
+  declare permission_id: string;
+}
+
+RolePermissionModel.init(
+  {
+    role_id: { type: DataTypes.CHAR(36), primaryKey: true, allowNull: false },
+    permission_id: { type: DataTypes.CHAR(36), primaryKey: true, allowNull: false },
+  },
+  { sequelize, tableName: 'role_permissions', timestamps: false },
+);
+
+export class UserRoleModel extends Model<
+  InferAttributes<UserRoleModel>,
+  InferCreationAttributes<UserRoleModel>
+> {
+  declare id: string;
+  declare user_id: string;
+  declare organization_id: string;
+  declare role_id: string;
+  declare created_at: Date;
+}
+
+UserRoleModel.init(
+  {
+    id: { type: DataTypes.CHAR(36), primaryKey: true },
+    user_id: { type: DataTypes.CHAR(36), allowNull: false },
+    organization_id: { type: DataTypes.CHAR(36), allowNull: false },
+    role_id: { type: DataTypes.CHAR(36), allowNull: false },
+    created_at: DataTypes.DATE,
+  },
+  {
+    sequelize,
+    tableName: 'user_roles',
+    timestamps: false,
+    indexes: [{ unique: true, fields: ['user_id', 'organization_id', 'role_id'] }],
+  },
+);
+
+export class MembershipModel extends Model<
+  InferAttributes<MembershipModel>,
+  InferCreationAttributes<MembershipModel>
+> {
+  declare id: string;
+  declare user_id: string;
+  declare organization_id: string;
+  declare status: 'active' | 'invited' | 'disabled';
+  declare created_at: Date;
+  declare updated_at: Date;
+}
+
+MembershipModel.init(
+  {
+    id: { type: DataTypes.CHAR(36), primaryKey: true },
+    user_id: { type: DataTypes.CHAR(36), allowNull: false },
+    organization_id: { type: DataTypes.CHAR(36), allowNull: false },
+    status: { type: DataTypes.ENUM('active', 'invited', 'disabled'), allowNull: false, defaultValue: 'active' },
+    created_at: DataTypes.DATE,
+    updated_at: DataTypes.DATE,
+  },
+  {
+    sequelize,
+    tableName: 'organization_memberships',
+    timestamps: false,
+    indexes: [{ unique: true, fields: ['user_id', 'organization_id'] }],
+  },
+);
+
+// Asociaciones
 CredentialModel.hasMany(OAuthAccountModel, { foreignKey: 'credential_id' });
 OAuthAccountModel.belongsTo(CredentialModel, { foreignKey: 'credential_id' });
 CredentialModel.hasMany(RefreshTokenModel, { foreignKey: 'credential_id' });
 RefreshTokenModel.belongsTo(CredentialModel, { foreignKey: 'credential_id' });
+CredentialModel.belongsTo(UserModel, { foreignKey: 'user_id' });
+UserModel.hasOne(CredentialModel, { foreignKey: 'user_id' });

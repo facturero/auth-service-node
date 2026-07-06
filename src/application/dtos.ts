@@ -6,6 +6,7 @@
 export interface RegisterInput {
   email: string;
   password: string;
+  identification: string;
   userAgent?: string | null;
   ip?: string | null;
 }
@@ -19,6 +20,7 @@ export interface LoginInput {
 
 export interface GoogleAuthInput {
   idToken: string;
+  identification?: string | null;
   userAgent?: string | null;
   ip?: string | null;
 }
@@ -48,6 +50,8 @@ export interface SessionOutput {
   expiresIn: number;
   refreshToken: string;
   isNewUser?: boolean;
+  needsOrg?: boolean;
+  organizationId?: string;
   user: UserSummary;
 }
 

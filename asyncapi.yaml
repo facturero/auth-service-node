@@ -1,0 +1,299 @@
+asyncapi: 3.0.0
+
+info:
+  title: auth-service — Eventos (identidad y acceso)
+  version: 2.0.0
+  description: >
+    Contrato de mensajería de **auth-service** sobre RabbitMQ. auth es el dueño del
+    dominio de identidad; **publica** eventos `identity.*` (y algunos `auth.*`) cuando
+    cambia el estado de usuarios/roles, y **consume** `organization.org.created` para
+    sembrar roles y crear al fundador. Los eventos se emiten con el patrón **Outbox**
+    (se escriben en `outbox_messages` en la misma transacción y un relay los publica).
+
+
+    Convención: exchange **topic** `crm.events`; la **routing key** es el `type` del
+    evento (p. ej. `identity.user.role_assigned`). Nombres en **pasado**. Los eventos
+    `identity.*` nombran el **contexto de dominio** (identidad), no el nombre del despliegue.
+
+defaultContentType: application/json
+
+servers:
+  rabbitmq:
+    host: localhost:5672
+    protocol: amqp
+    description: Broker RabbitMQ (desarrollo). En producción, la URL va en RABBITMQ_URL.
+    bindings:
+      amqp:
+        vhost: /
+
+channels:
+
+  userCreated:
+    address: identity.user.created
+    description: Se creó un usuario (registro, Google o invitación).
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      userCreated:
+        $ref: '#/components/messages/UserCreated'
+
+  userRoleAssigned:
+    address: identity.user.role_assigned
+    description: Se asignó (o cambió) un rol a un usuario en una organización.
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      userRoleAssigned:
+        $ref: '#/components/messages/UserRoleAssigned'
+
+  roleUpdated:
+    address: identity.role.updated
+    description: Cambiaron los permisos de un rol (implica pv++ a sus usuarios).
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      roleUpdated:
+        $ref: '#/components/messages/RoleUpdated'
+
+  userDisabled:
+    address: identity.user.disabled
+    description: Se deshabilitó un usuario (revocación de acceso).
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      userDisabled:
+        $ref: '#/components/messages/UserDisabled'
+
+  userLoggedIn:
+    address: auth.user.logged_in
+    description: Inicio de sesión exitoso (para auditoría).
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      userLoggedIn:
+        $ref: '#/components/messages/UserLoggedIn'
+
+  userProfileCompleted:
+    address: identity.user.profile_completed
+    description: El usuario completó su perfil (nombre + identificación).
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      userProfileCompleted:
+        $ref: '#/components/messages/UserProfileCompleted'
+
+  orgUpdated:
+    address: organization.org.updated
+    description: >
+      (Consumido) Se actualizó una organización en organization-service. Auth
+      actualiza el `country_code` de su read-model.
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      orgCreated:
+        $ref: '#/components/messages/OrgCreated'
+
+operations:
+
+  publishUserCreated:
+    action: send
+    channel: { $ref: '#/channels/userCreated' }
+    summary: Emite identity.user.created.
+
+  publishUserRoleAssigned:
+    action: send
+    channel: { $ref: '#/channels/userRoleAssigned' }
+    summary: Emite identity.user.role_assigned (consumido por el gateway para refrescar la caché de pv).
+
+  publishRoleUpdated:
+    action: send
+    channel: { $ref: '#/channels/roleUpdated' }
+    summary: Emite identity.role.updated (consumido por el gateway para la caché de pv).
+
+  publishUserDisabled:
+    action: send
+    channel: { $ref: '#/channels/userDisabled' }
+    summary: Emite identity.user.disabled.
+
+  publishUserLoggedIn:
+    action: send
+    channel: { $ref: '#/channels/userLoggedIn' }
+    summary: Emite auth.user.logged_in.
+
+  publishUserProfileCompleted:
+    action: send
+    channel: { $ref: '#/channels/userProfileCompleted' }
+    summary: Emite identity.user.profile_completed.
+
+  consumeOrgUpdated:
+    action: receive
+    channel: { $ref: '#/channels/orgUpdated' }
+    summary: Consume organization.org.updated y actualiza country_code.
+
+components:
+
+  messageTraits:
+    eventEnvelope:
+      headers:
+        type: object
+        properties:
+          eventId: { type: string, format: uuid, description: Identificador único del evento (idempotencia). }
+          type: { type: string, description: Tipo del evento = routing key. }
+          occurredAt: { type: string, format: date-time }
+          organizationId:
+            type: string
+            format: uuid
+            nullable: true
+            description: Contexto de organización si aplica (para consumidores multi-org).
+
+  messages:
+
+    UserCreated:
+      name: identity.user.created
+      title: Usuario creado
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/UserCreatedPayload'
+
+    UserRoleAssigned:
+      name: identity.user.role_assigned
+      title: Rol asignado a usuario
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/UserRoleAssignedPayload'
+
+    RoleUpdated:
+      name: identity.role.updated
+      title: Permisos de rol actualizados
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/RoleUpdatedPayload'
+
+    UserDisabled:
+      name: identity.user.disabled
+      title: Usuario deshabilitado
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/UserDisabledPayload'
+
+    UserLoggedIn:
+      name: auth.user.logged_in
+      title: Inicio de sesión
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/UserLoggedInPayload'
+
+    UserProfileCompleted:
+      name: identity.user.profile_completed
+      title: Perfil completado
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/UserProfileCompletedPayload'
+
+    OrgUpdated:
+      name: organization.org.updated
+      title: Organización actualizada
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/OrgUpdatedPayload'
+
+  schemas:
+
+    UserCreatedPayload:
+      type: object
+      required: [userId, email]
+      properties:
+        userId: { type: string, format: uuid }
+        email: { type: string, format: email }
+
+    UserRoleAssignedPayload:
+      type: object
+      required: [userId, organizationId, roleId, pv]
+      properties:
+        userId: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        roleId: { type: string, format: uuid }
+        pv:
+          type: integer
+          description: Nuevo permissions_version del usuario tras la asignación.
+          example: 4
+
+    RoleUpdatedPayload:
+      type: object
+      required: [roleId, organizationId]
+      properties:
+        roleId: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+
+    UserDisabledPayload:
+      type: object
+      required: [userId]
+      properties:
+        userId: { type: string, format: uuid }
+
+    UserLoggedInPayload:
+      type: object
+      required: [userId, at]
+      properties:
+        userId: { type: string, format: uuid }
+        at: { type: string, format: date-time }
+        ip: { type: string, nullable: true }
+
+    UserProfileCompletedPayload:
+      type: object
+      required: [userId, fullName, identification]
+      properties:
+        userId: { type: string, format: uuid }
+        fullName: { type: string }
+        identification: { type: string, description: 'type:number', example: 'cedula:1712345678' }
+
+    OrgUpdatedPayload:
+      type: object
+      required: [organizationId]
+      description: Payload esperado del evento de organization-service.
+      properties:
+        organizationId: { type: string, format: uuid }
+        name: { type: string, nullable: true, example: Mi Empresa S.A. }
+        countryCode: { type: string, nullable: true, example: EC }

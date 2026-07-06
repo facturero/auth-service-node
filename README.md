@@ -1,20 +1,33 @@
-# auth-service
+# auth-service (identidad y acceso)
 
-Servicio de **autenticación** del ecosistema CRM. Responde a *"¿quién eres?"*: gestiona credenciales, emite y rota tokens (JWT), y permite **iniciar sesión o crear cuenta con Google**. No gestiona roles ni permisos (eso es de `identity-service`).
+Servicio **único de identidad** del ecosistema CRM. Es el dueño del dominio de identidad y responde a las **dos** preguntas:
 
-> **Alcance de este repo:** solo el **backend** del auth-service. Sin frontend. Este README y el `openapi.yaml` son documentación de diseño; el código de implementación se desarrolla aparte.
+- **¿Quién eres?** (autenticación): credenciales, login email/contraseña, **Google Sign-In**, **2FA** (roadmap), emisión y rotación de **JWT**.
+- **¿Qué puedes hacer?** (autorización / **RBAC**): usuarios, **roles** por organización, **permisos** (`recurso:acción`), asignaciones y membresía de usuarios a organizaciones.
+
+> **Decisión de diseño.** Antes esto se planteó como dos servicios (`auth` + `identity`). Se **unificaron** porque auth **no puede firmar un token correcto sin los roles/permisos**: comparten ciclo de vida y separarlos solo obligaba a un puente de sincronización por eventos (read-model + `pv`) sin beneficio real. Aquí el JWT se arma leyendo las **propias** tablas RBAC — sin read-model ni consistencia eventual interna. Justificación completa en el vault de arquitectura: `arquitectura/autorizacion.md`.
+>
+> **Alcance de este repo:** solo el **backend**. Base propia `auth_db`. El despliegue conserva el nombre `auth-service` por continuidad, pero su dominio es el de un `iam-service` (identidad y acceso).
 
 ---
 
-## Características
+## Estado del servicio
 
-- Registro con **email + contraseña**.
-- Inicio de sesión con **email + contraseña**.
-- **Google Sign-In / Sign-Up** mediante el flujo de **ID Token** (sin `client_secret` en el backend).
-- **Vinculación automática**: si el email de Google ya existe como cuenta local (y está verificado), se vincula; si no, se crea la cuenta.
-- **Access token** (corta vida) + **refresh token** (larga vida) con **rotación** y **revocación**.
-- `GET /auth/me` protegido por JWT.
-- Publicación de eventos de dominio (patrón **Outbox**) para que el resto del sistema reaccione (ej. `identity-service` crea el perfil del usuario).
+Este repo distingue con honestidad lo construido de lo diseñado:
+
+| Área | Estado |
+|------|--------|
+| **Autenticación** (register, login, Google, refresh/rotación, logout, `/auth/me`) | ✅ **Implementado** |
+| JWT **RS256** (firma con privada, verificación con pública) | ✅ Implementado |
+| Refresh tokens **hasheados** + rotación + `replaced_by` | ✅ Implementado |
+| Clean Architecture + tests (vitest) + migración + Docker/k8s/CI/SOPS | ✅ Implementado |
+| **RBAC**: tablas `users`/`roles`/`permissions`/`user_role`/`role_permission`/`organization_membership` | ✅ **Implementado** |
+| **Permisos en el JWT** (`org_id`, `permissions[]`, `pv`) | ✅ Implementado |
+| Endpoints de administración (`/users`, `/roles`, `/permissions`) | ✅ Implementado |
+| **switch-organization**, **complete-profile**, eventos por Outbox (publisher) | ✅ Implementado |
+| **2FA** (TOTP) | 🚧 Diseñado |
+
+El JWT lleva `sub`, `email`, `org_id`, `country_code`, `permissions[]` y `pv` (ver [El JWT](#el-jwt-contenido) y [Autorización (RBAC)](#autorización-rbac)).
 
 ---
 
@@ -23,158 +36,144 @@ Servicio de **autenticación** del ecosistema CRM. Responde a *"¿quién eres?"*
 | Capa | Tecnología | Notas |
 |------|------------|-------|
 | Runtime | Node.js ≥ 20 | LTS |
-| Lenguaje | TypeScript | `strict: true` |
+| Lenguaje | TypeScript (`strict`) | `type: commonjs` |
 | HTTP | Hono.js | framework web |
-| ORM | Sequelize | acceso a MySQL |
-| Base de datos | MySQL ≥ 8 | base propia: `auth_db` |
+| ORM | Sequelize + `mysql2` | base propia `auth_db` |
 | Validación | Zod + `@hono/zod-validator` | en el borde HTTP |
-| JWT | `jose` | firma/verificación, recomendado **RS256** |
-| Hash de contraseñas | `argon2` (o `bcrypt`) | nunca texto plano |
-| Google | `google-auth-library` | verificación del ID Token |
-| Mensajería | RabbitMQ | eventos (Outbox) — opcional para arrancar |
-| Contenedores | Docker / MicroK8s | despliegue |
+| JWT | `jose` | **RS256** (firma/verificación) |
+| Hash | `argon2` (bcrypt disponible) | nunca texto plano |
+| Google | `google-auth-library` | verificación del **ID Token** |
+| Tests | `vitest` | unitarios + e2e |
+| Infra | Docker · MicroK8s · GitHub Actions · SOPS | despliegue y secretos |
+
+No se accede a tablas de otros servicios: las referencias externas (ej. `organization_id`) son por **ID** + eventos.
 
 ---
 
 ## Arquitectura limpia (layer-first)
 
-El auth-service es **un solo bounded context**, así que se organiza **por capas** con la **regla de dependencia** apuntando siempre hacia adentro:
+Un solo bounded context, organizado **por capas** con la regla de dependencia hacia adentro:
 
 ```
 domain  ←  application  ←  infrastructure
                        ←  interface
 ```
 
-- **`domain`** no importa nada externo (ni Hono, ni Sequelize, ni jose). Solo entidades, value objects, errores y las **interfaces de repositorio** (puertos).
-- **`application`** importa solo `domain`. Contiene los **casos de uso** y declara los **puertos de infraestructura** (hasher, token service, verificador de Google, publisher, unit of work).
-- **`infrastructure`** e **`interface`** implementan esos puertos y dependen hacia adentro, nunca al revés.
+- **`domain`**: entidades, value objects, errores e **interfaces de repositorio**. Cero dependencias de framework.
+- **`application`**: casos de uso + **puertos** (hasher, token service, verificador de Google, publisher, unit of work).
+- **`infrastructure`** / **`interface`**: implementan esos puertos. Hono vive solo en `interface/`; Sequelize solo en `infrastructure/persistence/`.
 
-Beneficio: el ORM, el verificador de Google o el hasher son **intercambiables** sin tocar la lógica de negocio. Hono vive solo en `interface/`; Sequelize solo en `infrastructure/persistence/`.
-
-### Estructura de carpetas
+### Estructura real de carpetas
 
 ```
 auth-service/
 ├── src/
-│   ├── domain/                  # centro, CERO dependencias externas
-│   │   ├── entities/            # Credential, RefreshToken, OAuthAccount
-│   │   ├── value-objects/       # Email, PasswordHash, UserId
-│   │   ├── errors/              # InvalidCredentials, EmailAlreadyExists, ...
-│   │   └── repositories/        # INTERFACES (puertos) de persistencia
-│   ├── application/             # casos de uso
-│   │   ├── use-cases/           # RegisterWithPassword, LoginWithPassword,
-│   │   │                        #   LoginWithGoogle, RefreshToken, Logout, GetMe
-│   │   ├── ports/               # INTERFACES: PasswordHasher, TokenService,
-│   │   │                        #   GoogleIdTokenVerifier, EventPublisher, UnitOfWork
-│   │   └── dtos/                # entrada/salida de los casos de uso
-│   ├── infrastructure/          # implementaciones concretas
-│   │   ├── persistence/         # Sequelize: modelos, mappers, repos, migraciones
-│   │   ├── security/            # JWT (jose) + hasher (argon2)
-│   │   ├── google/              # verificación del ID Token
-│   │   ├── messaging/           # publisher RabbitMQ + Outbox
-│   │   └── config/              # carga y validación de variables de entorno
+│   ├── domain/
+│   │   ├── entities.ts            # Credential, OAuthAccount, RefreshToken
+│   │   ├── value-objects.ts       # Email, UserId, ...
+│   │   ├── errors.ts              # InvalidCredentials, EmailAlreadyExists, Unauthorized...
+│   │   └── repositories.ts        # interfaces (puertos de persistencia)
+│   ├── application/
+│   │   ├── ports.ts               # PasswordHasher, TokenService, GoogleIdTokenVerifier, ...
+│   │   ├── dtos.ts
+│   │   ├── session.ts             # armado de la sesión (access + refresh)
+│   │   └── use-cases/
+│   │       ├── register-with-password.ts
+│   │       ├── login-with-password.ts
+│   │       ├── login-with-google.ts
+│   │       ├── refresh-token.ts
+│   │       ├── logout.ts
+│   │       └── get-me.ts
+│   ├── infrastructure/
+│   │   ├── config.ts              # carga y valida env; resuelve claves JWT (archivo o inline)
+│   │   ├── persistence/           # models.ts · repositories.ts · sequelize.ts
+│   │   ├── security/              # jwt-token-service.ts (jose) · argon2/bcrypt hasher
+│   │   └── google/                # google-id-token-verifier.ts
 │   ├── interface/
-│   │   └── http/
-│   │       ├── routes/          # rutas Hono
-│   │       ├── controllers/     # request → caso de uso → response
-│   │       ├── middlewares/     # auth (verifica JWT), manejo de errores
-│   │       └── validators/      # esquemas Zod
-│   ├── shared/                  # Result<T>, tipos comunes
-│   └── main.ts                  # composition root: arma e inyecta todo
-├── .env.example
+│   │   └── http/                  # app.ts · routes.ts · controllers.ts · middlewares.ts · validators.ts
+│   ├── __tests__/                 # vitest (unit + e2e)
+│   └── main.ts                    # composition root: arma e inyecta todo
+├── migrations/                    # sequelize-cli
+├── certs/                         # private.pem / public.pem (gitignored)
+├── config/                        # secrets.production.env(.enc) — SOPS
+├── k8s/                           # deployment.yaml · service.yaml
+├── .github/workflows/deploy.yaml  # CI/CD
+├── Dockerfile · .dockerignore · .sops.yaml
 ├── openapi.yaml
-└── README.md
+└── .env.example
 ```
 
 ---
 
+
+
 ## Requisitos previos
 
 - Node.js ≥ 20 y npm
-- MySQL ≥ 8 con una base `auth_db` creada
-- (Opcional) RabbitMQ, si vas a publicar eventos
-- Un **Client ID de Google** (Google Cloud Console → *Credentials* → *OAuth 2.0 Client ID*)
+- MySQL ≥ 8 con la base `auth_db` creada
+- Par de claves **RS256** en `certs/` (o inyectadas por env)
+- Un **Client ID de Google** (para `/auth/google`)
+- (Opcional) RabbitMQ, para publicar eventos
+
+Generar el par de claves:
+
+```bash
+openssl genpkey -algorithm RSA -out certs/private.pem -pkeyopt rsa_keygen_bits:2048
+openssl rsa -pubout -in certs/private.pem -out certs/public.pem
+```
 
 ---
 
 ## Variables de entorno
 
-Copia `.env.example` a `.env` y complétalo.
+Copia `.env.example` a `.env`. Las claves JWT se **leen de archivo** por defecto (`*_PATH`); si defines el PEM inline (`JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY`), este tiene **prioridad** (útil con SOPS en producción).
 
 | Variable | Ejemplo | Descripción |
 |----------|---------|-------------|
 | `NODE_ENV` | `development` | entorno |
-| `PORT` | `3001` | puerto HTTP |
-| `DB_HOST` | `localhost` | host MySQL |
-| `DB_PORT` | `3306` | puerto MySQL |
-| `DB_USER` | `auth_user` | usuario MySQL |
-| `DB_PASSWORD` | `secret` | contraseña MySQL |
-| `DB_NAME` | `auth_db` | base de datos |
-| `JWT_PRIVATE_KEY` | `-----BEGIN PRIVATE KEY-----...` | clave privada (firma del access token, RS256) |
-| `JWT_PUBLIC_KEY` | `-----BEGIN PUBLIC KEY-----...` | clave pública (verificación; la comparten gateway/otros servicios) |
-| `JWT_ACCESS_TTL` | `900` | vida del access token (segundos) |
-| `JWT_REFRESH_TTL` | `2592000` | vida del refresh token (segundos) |
+| `PORT` | `3001` | puerto HTTP (interno, detrás del gateway) |
+| `DB_HOST` / `DB_PORT` | `localhost` / `3306` | MySQL |
+| `DB_USER` / `DB_PASSWORD` | `auth_user` / `secret` | credenciales MySQL |
+| `DB_NAME` | `auth_db` | base propia |
+| `JWT_PRIVATE_KEY_PATH` | `certs/private.pem` | clave privada (firma) — o `JWT_PRIVATE_KEY` inline |
+| `JWT_PUBLIC_KEY_PATH` | `certs/public.pem` | clave pública (verificación; la comparten gateway/servicios) — o `JWT_PUBLIC_KEY` inline |
+| `JWT_ACCESS_TTL` | `900` | vida del access token (s) — **15 min** |
+| `JWT_REFRESH_TTL` | `2592000` | vida del refresh token (s) — 30 días |
+| `JWT_ISSUER` | `auth-service` | claim `iss` (debe coincidir en el gateway) |
+| `JWT_AUDIENCE` | `crm-api` | claim `aud` (debe coincidir en el gateway) |
 | `GOOGLE_CLIENT_ID` | `xxxx.apps.googleusercontent.com` | audiencia esperada del ID Token |
+| `CORS_ORIGIN` | `http://localhost:5173` | origen permitido del front |
 | `RABBITMQ_URL` | `amqp://localhost` | conexión a RabbitMQ (opcional) |
-| `CORS_ORIGIN` | `http://localhost:5173` | origen permitido para el front |
 
-> **JWT — RS256 recomendado.** Con un par de claves (privada para firmar aquí, pública para verificar en el gateway y demás servicios) ningún otro servicio necesita el secreto. Si prefieres simplicidad al arrancar, puedes usar HS256 con un único `JWT_SECRET`, pero migrar luego a RS256 implica recircular claves.
-
-### .env.example
-
-```dotenv
-NODE_ENV=development
-PORT=3001
-
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=auth_user
-DB_PASSWORD=secret
-DB_NAME=auth_db
-
-# RS256: pega las claves (o referencia archivos en tu loader)
-JWT_PRIVATE_KEY=
-JWT_PUBLIC_KEY=
-JWT_ACCESS_TTL=900
-JWT_REFRESH_TTL=2592000
-
-GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
-
-RABBITMQ_URL=amqp://localhost
-CORS_ORIGIN=http://localhost:5173
-```
+> **RS256**: la privada solo vive en auth-service; la pública se distribuye al [gateway] y demás servicios para que verifiquen **sin** llamar a auth en el camino crítico. `JWT_ISSUER`/`JWT_AUDIENCE` deben coincidir con lo que valida el gateway.
 
 ---
 
 ## Instalación y ejecución
 
-Scripts esperados (los defines en tu `package.json`):
-
 ```bash
-# instalar dependencias
 npm install
+cp .env.example .env         # completar valores + generar certs/
 
-# preparar entorno
-cp .env.example .env   # y completar valores
+npm run db:migrate           # migraciones Sequelize
+npm run dev                  # desarrollo (tsx watch)
 
-# migraciones de base de datos (Sequelize)
-npm run db:migrate
+npm run build && npm start   # producción (tsc → node dist/main.js)
 
-# desarrollo (con recarga)
-npm run dev
-
-# build y producción
-npm run build
-npm run start
+npm test                     # vitest (unit + e2e)
+npm run typecheck            # tsc --noEmit
+npm run db:migrate:undo      # revertir última migración
 ```
 
-El servicio queda escuchando en `http://localhost:3001` (según `PORT`). El contrato completo está en [`openapi.yaml`](./openapi.yaml).
+Escucha en `http://localhost:3001` (según `PORT`). Contrato completo en [`openapi.yaml`](./openapi.yaml).
 
 ---
 
 ## Modelo de datos (`auth_db`)
 
-El auth-service **solo** guarda lo necesario para autenticar. El perfil del usuario, roles y permisos viven en `identity-service`.
+### Implementado hoy (autenticación)
+
+Migración `migrations/20260630104535-create-tables.js`:
 
 ```mermaid
 erDiagram
@@ -183,7 +182,7 @@ erDiagram
 
     CREDENTIAL {
         char36 id PK
-        char36 user_id "identidad de negocio (sub del JWT)"
+        char36 user_id UK "identidad de negocio (sub del JWT)"
         string email UK
         string password_hash "NULL si la cuenta es solo-Google"
         bool email_verified
@@ -195,62 +194,165 @@ erDiagram
         char36 id PK
         char36 credential_id FK
         string provider "google"
-        string provider_user_id "el 'sub' de Google"
-        string email "email del proveedor"
+        string provider_user_id "el 'sub' de Google (único con provider)"
+        string email
         datetime created_at
     }
     REFRESH_TOKEN {
         char36 id PK
         char36 credential_id FK
-        string token_hash "se guarda el hash, NO el token"
+        string token_hash UK "se guarda el hash, NO el token"
         datetime expires_at
         datetime revoked_at "NULL si activo"
         char36 replaced_by "rotación (cadena)"
-        string user_agent "auditoría de sesión (opcional)"
-        string ip "auditoría de sesión (opcional)"
+        string user_agent
+        string ip
         datetime created_at
     }
     OUTBOX_MESSAGE {
         char36 id PK
-        string aggregate_type "credential"
+        string aggregate_type
         char36 aggregate_id
-        string type "auth.credential.registered"
+        string type "identity.user.created, ..."
         json payload
         datetime occurred_at
         datetime processed_at "NULL hasta publicar"
     }
-    LOGIN_ATTEMPT {
+```
+
+Notas:
+
+- **`password_hash` es `NULL`** para cuentas solo-Google. Una cuenta puede tener contraseña **y** Google vinculado.
+- Índice único `(provider, provider_user_id)` evita duplicar la cuenta Google.
+- Refresh tokens **hasheados** (SHA-256); nunca en claro. `replaced_by` encadena la rotación.
+- **`user_id`** lo genera auth al registrar; es el `sub` del JWT y la clave con la que el resto del sistema referencia a la persona.
+
+### Implementado (RBAC)
+
+Las tablas de autorización viven en la **misma base**; `credential.user_id` es **FK real** hacia `users.id` (referencia local, sin cruzar servicios):
+
+```mermaid
+erDiagram
+    USER ||--o| CREDENTIAL : autentica
+    USER ||--o{ ORGANIZATION_MEMBERSHIP : pertenece
+    USER ||--o{ USER_ROLE : tiene
+    ROLE ||--o{ USER_ROLE : asignado
+    ROLE ||--o{ ROLE_PERMISSION : agrupa
+    PERMISSION ||--o{ ROLE_PERMISSION : incluido
+
+    USER {
         char36 id PK
-        string email
-        string ip
-        bool success
-        datetime created_at
+        string email UK
+        string full_name
+        enum status "active|disabled"
+        bool is_platform_admin
+        int permissions_version "pv · revocación instantánea"
+    }
+    ROLE {
+        char36 id PK
+        char36 organization_id "★ rol por organización (null = plantilla)"
+        string name "admin, vendedor, contador"
+        bool is_system
+    }
+    PERMISSION {
+        char36 id PK
+        string code UK "invoice:create"
+        string resource
+        string action
+    }
+    USER_ROLE {
+        char36 id PK
+        char36 user_id FK
+        char36 organization_id "★ el rol aplica en esta org"
+        char36 role_id FK
+    }
+    ROLE_PERMISSION {
+        char36 role_id FK
+        char36 permission_id FK
+    }
+    ORGANIZATION_MEMBERSHIP {
+        char36 id PK
+        char36 user_id FK
+        char36 organization_id "ref → organization-service"
+        enum status "active|invited|disabled"
     }
 ```
 
-Notas de diseño:
-
-- **`password_hash` es `NULL`** para cuentas creadas solo con Google. Una cuenta puede tener ambos: contraseña **y** Google vinculado.
-- **Constraint único** `(provider, provider_user_id)` en `OAUTH_ACCOUNT` evita duplicar la cuenta Google.
-- **Refresh tokens hasheados**: nunca se almacena el token en claro; se guarda su hash. `replaced_by` encadena la rotación.
-- **`user_id`** lo genera auth-service al registrar y se publica por evento; es el `sub` del JWT y la clave con la que el resto del sistema referencia a la persona.
-- `LOGIN_ATTEMPT` es opcional, para rate-limit / bloqueo temporal por intentos fallidos.
+- **Usuario global** (la persona): no lleva `organization_id`; puede estar en varias orgs vía `organization_membership`.
+- **Roles por organización**; hay **plantillas** globales (`organization_id = null`) que se clonan al crear una org.
+- **`user_role` lleva `organization_id`**: alguien puede ser "admin" en una org y "vendedor" en otra.
+- **`permissions_version` (`pv`)**: contador por usuario para revocación instantánea (ver [Revocación](#revocación-dos-capas)).
 
 ---
 
 ## Endpoints
 
+### Autenticación (implementado)
+
 | Método | Ruta | Protegido | Descripción |
 |--------|------|-----------|-------------|
 | `GET` | `/health` | no | healthcheck |
 | `POST` | `/auth/register` | no | crear cuenta con email + contraseña |
-| `POST` | `/auth/login` | no | iniciar sesión con email + contraseña |
-| `POST` | `/auth/google` | no | iniciar sesión o crear cuenta con ID Token de Google |
-| `POST` | `/auth/refresh` | no | obtener un nuevo access token (rota el refresh) |
+| `POST` | `/auth/login` | no | login con email + contraseña |
+| `POST` | `/auth/google` | no | login o alta con **ID Token** de Google |
+| `POST` | `/auth/refresh` | no | nuevo access token (rota el refresh) |
 | `POST` | `/auth/logout` | no | revocar un refresh token |
 | `GET` | `/auth/me` | **sí** (Bearer) | datos de la sesión actual |
 
-Detalle de cuerpos, códigos y ejemplos en [`openapi.yaml`](./openapi.yaml).
+### Administración RBAC (implementado)
+
+| Método | Ruta | Protegido | Permiso |
+|--------|------|-----------|---------|
+| `GET` | `/users` | **sí** | `user:read` |
+| `POST` | `/users/invite` | **sí** | `user:invite` |
+| `POST` | `/users/:id/roles` | **sí** | `user:assign_role` |
+| `GET` | `/roles` | **sí** | `user:read` |
+| `POST` | `/roles` | **sí** | `user:assign_role` |
+| `PATCH` | `/roles/:id/permissions` | **sí** | `user:assign_role` |
+| `GET` | `/permissions` | **sí** | (catálogo) |
+
+### Onboarding (implementado)
+
+| Método | Ruta | Protegido | Descripción |
+|--------|------|-----------|-------------|
+| `POST` | `/auth/switch-organization` | **sí** | Reemite el token con otra `org_id` |
+| `POST` | `/auth/complete-profile` | **sí** | Fija nombre e identificación del usuario |
+
+Detalle de cuerpos y códigos en [`openapi.yaml`](./openapi.yaml).
+
+---
+
+## El JWT (contenido)
+
+**Access token** — JWT **RS256**, corta vida (~15 min). **Refresh token** — valor opaco aleatorio; en la base solo su **hash**; rota en cada uso.
+
+**Access token (implementado):**
+
+```json
+{ "iss": "auth-service", "aud": "crm-api", "sub": "<user_id>",
+  "email": "user@org.com", "org_id": "<organization_id>", "country_code": "EC",
+  "permissions": ["customer:read", "invoice:create"], "pv": 3,
+  "token_use": "access", "iat": 0, "exp": 0 }
+```
+
+Los permisos se resuelven con un JOIN local (`user_role → role_permission → permission`), sin read-model ni llamadas externas. El gateway y los servicios verifican con la **clave pública**, sin contactar a auth en el camino crítico.
+
+---
+
+## Autorización (RBAC)
+
+El modelo completo está en el vault (`arquitectura/autorizacion.md`). Resumen de cómo encaja auth-service:
+
+- **auth-service es la fuente de verdad** de roles/permisos y **arma el JWT** con los permisos del usuario en su organización activa.
+- **El gateway** hace el enforcement **grueso** (`ruta → permiso`) contra los claims del token, sin llamar a auth.
+- **Cada servicio** hace el enforcement **fino** (por recurso) leyendo `X-Permissions` que inyecta el gateway, y aísla por `organization_id`.
+
+### Revocación (dos capas)
+
+1. **TTL corto (15 min)** — un cambio de rol/permiso normal se auto-sana al refrescar: el nuevo token ya trae los permisos frescos.
+2. **`permissions_version` (`pv`)** — para revocación **instantánea** (despido, cuenta comprometida): auth incrementa `pv` en la fila del usuario; el gateway compara el `pv` del token contra su caché local (actualizada por evento) y, si no coincide, responde `401` → el cliente refresca. Es un **lookup local**, no una llamada a auth por request.
+
+Además, los **refresh tokens hasheados** ya dan revocación a nivel de sesión (logout / reuso).
 
 ---
 
@@ -278,7 +380,7 @@ sequenceDiagram
     participant C as Cliente
     participant A as auth-service
     C->>A: POST /auth/login {email, password}
-    A->>A: busca credencial + verifica hash
+    A->>A: busca credencial + verifica hash + estado
     alt válido
         A-->>C: 200 {accessToken, refreshToken, user}
     else inválido
@@ -288,35 +390,28 @@ sequenceDiagram
 
 ### Google Sign-In / Sign-Up (flujo ID Token)
 
-El **frontend** obtiene el ID Token con Google Identity Services y lo envía. El backend lo **verifica** (firma contra los certificados de Google, `aud == GOOGLE_CLIENT_ID`, emisor y expiración). **No** se usa `client_secret` aquí.
+El **front** obtiene el ID Token con Google Identity Services y lo envía. El backend lo **verifica** (firma contra certificados de Google, `aud == GOOGLE_CLIENT_ID`, emisor, expiración). **No** usa `client_secret`.
 
 ```mermaid
 sequenceDiagram
     participant C as Cliente (front)
     participant A as auth-service
-    participant G as Google (verificación)
+    participant G as Google
     participant DB as auth_db
     C->>A: POST /auth/google {idToken}
     A->>G: verifica firma + aud + exp
-    G-->>A: payload {sub, email, email_verified, name}
-    alt ya existe OAUTH_ACCOUNT (google, sub)
-        A->>DB: lee credencial
-    else email ya existe como cuenta local (verificado)
+    G-->>A: payload {sub, email, email_verified}
+    alt existe OAUTH_ACCOUNT (google, sub)
+        A->>DB: lee credencial → login
+    else email ya existe local (verificado)
         A->>DB: vincula → crea OAUTH_ACCOUNT
     else no existe
         A->>DB: crea CREDENTIAL (password NULL) + OAUTH_ACCOUNT + OUTBOX
     end
-    A->>A: emite access + refresh
     A-->>C: 200 {accessToken, refreshToken, user}
 ```
 
-Reglas de la vinculación:
-
-- Si el `sub` de Google ya está registrado → **login** directo.
-- Si el email del token **ya existe** como cuenta local y `email_verified == true` → **se vincula** (se añade `OAUTH_ACCOUNT`).
-- Si no existe → **se crea** la cuenta (sin contraseña) y se emite el evento de registro.
-
-### Refresh (rotación)
+### Refresh (rotación) y Logout
 
 ```mermaid
 sequenceDiagram
@@ -326,65 +421,58 @@ sequenceDiagram
     C->>A: POST /auth/refresh {refreshToken}
     A->>DB: busca por hash → valida no expirado / no revocado
     A->>DB: revoca el actual + crea uno nuevo (replaced_by)
-    A->>A: emite nuevo access token
     A-->>C: 200 {accessToken, refreshToken}
-```
-
-Si el refresh ya fue usado (detección de reuso por la cadena `replaced_by`), se considera comprometido y se recomienda **revocar toda la cadena**.
-
-### Logout
-
-```mermaid
-sequenceDiagram
-    participant C as Cliente
-    participant A as auth-service
+    Note over A,DB: reuso detectado por la cadena → revocar toda la cadena
     C->>A: POST /auth/logout {refreshToken}
-    A->>A: marca revoked_at en el refresh token
+    A->>DB: marca revoked_at
     A-->>C: 204
 ```
 
 ---
 
-## Contenido del token
-
-- **Access token (JWT, RS256, corta vida ~15 min)** — claims sugeridos: `sub` (user_id), `email`, `iat`, `exp`, `token_use=access`. Más adelante incluirá los **permisos** del usuario, alimentados por el read-model que escucha a `identity-service`.
-- **Refresh token (larga vida ~30 días)** — cadena **opaca aleatoria**; en la base solo vive su **hash**. Se **rota** en cada uso.
-
-El **gateway** y los demás servicios verifican el access token con la **clave pública** (`JWT_PUBLIC_KEY`), sin contactar al auth-service en el camino crítico.
-
----
-
 ## Seguridad
 
-- Contraseñas con **argon2** (o bcrypt); jamás en texto plano.
+- Contraseñas con **argon2**; jamás en texto plano.
 - Refresh tokens **hasheados** en reposo; rotación + detección de reuso.
-- **RS256** para que la verificación sea descentralizada (clave pública compartida).
-- Validación estricta del **ID Token** de Google: firma, `aud`, `iss`, `exp`.
-- `email_verified` se respeta antes de vincular cuentas por email.
-- (Opcional) rate-limit / bloqueo temporal vía `LOGIN_ATTEMPT`.
-- CORS restringido a `CORS_ORIGIN`.
-- Respuestas de error **genéricas** en login (no revelar si el email existe).
+- **RS256**: verificación descentralizada con clave pública; algoritmo fijado explícitamente (nunca `alg: none`).
+- Validación estricta del **ID Token** de Google: firma, `aud`, `iss`, `exp`; se respeta `email_verified` antes de vincular.
+- Respuestas de login **genéricas** (no revelar si el email existe).
+- CORS restringido a `CORS_ORIGIN`; el servicio solo es alcanzable tras el gateway (red interna).
+- Sin PII sensible ni secretos en el payload del JWT.
+- Secretos de producción cifrados con **SOPS** (`config/secrets.production.enc`, `.sops.yaml`).
 
 ---
 
-## Eventos publicados (integración)
+## Eventos (Outbox + RabbitMQ)
 
-Vía patrón **Outbox** (tabla `OUTBOX_MESSAGE` → publisher a RabbitMQ):
+Los eventos se escriben en `outbox_messages` dentro de la misma transacción (Outbox pattern). Si `RABBITMQ_URL` está definida, un relay los publica en el exchange `crm.events` (topic) y un consumer escucha `organization.org.updated` para refrescar el `country_code` del read-model de organizaciones.
 
 | Evento | Cuándo | Consumido por |
 |--------|--------|---------------|
-| `auth.credential.registered` | Nueva cuenta creada (password o Google) | `identity-service` (crea el perfil del usuario) |
-| `auth.credential.linked_google` | Se vincula Google a una cuenta existente | auditoría |
-| `auth.session.refreshed` | Se rota un refresh token | auditoría (opcional) |
+| `identity.user.created` | Alta / invitación de usuario | realtime |
+| `identity.user.role_assigned` | Asignación/cambio de rol (`pv++`) | gateway (caché de `pv`) |
+| `identity.user.profile_completed` | Perfil completado | realtime |
+| `identity.role.updated` | Cambio de permisos de un rol | gateway (caché de `pv`) |
+| `identity.user.disabled` | Baja de usuario | gateway, realtime |
 
-> En el diseño global, `identity-service` consume `auth.credential.registered` para crear el usuario de negocio con su `user_id`. Mientras `identity-service` no exista, el auth-service funciona de forma autónoma emitiendo los eventos para su consumo posterior.
+**Consume:** `organization.org.updated` → actualiza `country_code` del read-model.
+
+---
+
+## Despliegue
+
+- **Docker**: `Dockerfile` multi-stage, usuario no-root; no copia `certs/` (se inyectan por Secret).
+- **Kubernetes** (`k8s/`): `deployment.yaml` + `service.yaml` (`ClusterIP`, no expuesto directo). La clave pública/privada se inyecta por Secret; `JWT_*_PATH` o PEM inline.
+- **CI/CD**: `.github/workflows/deploy.yaml`.
+- **Secretos**: SOPS (`.sops.yaml`, `config/secrets.production.enc`).
 
 ---
 
 ## Convenciones
 
-- **Clean Architecture**: la dependencia siempre apunta hacia adentro; el dominio no conoce frameworks.
-- **Una base de datos propia** (`auth_db`); no se accede a tablas de otros servicios.
-- Eventos nombrados en **pasado**: `auth.credential.registered`.
+- **Clean Architecture**: la dependencia apunta hacia adentro; el dominio no conoce frameworks.
+- **Una base propia** (`auth_db`); referencias externas por **ID** + eventos, nunca JOIN entre servicios.
+- Eventos en **pasado**, namespace por contexto (`identity.user.created`).
 - Validación en el **borde** con Zod; invariantes en el **dominio**.
 - Errores con cuerpo estándar `{ code, message, details? }` (ver `openapi.yaml`).
+- Aislamiento por `organization_id` en toda operación RBAC.

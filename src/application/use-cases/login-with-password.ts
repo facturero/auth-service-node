@@ -1,6 +1,6 @@
 import { Email } from '../../domain/value-objects';
 import { InvalidCredentialsError, AccountDisabledError } from '../../domain/errors';
-import { PasswordHasher, TokenService } from '../ports';
+import { AccessContextResolver, PasswordHasher, TokenService } from '../ports';
 import { CredentialRepository, RefreshTokenRepository } from '../../domain/repositories';
 import { LoginInput, SessionOutput } from '../dtos';
 import { issueSession } from '../session';
@@ -15,6 +15,7 @@ export class LoginWithPasswordUseCase {
     private readonly refreshTokens: RefreshTokenRepository,
     private readonly hasher: PasswordHasher,
     private readonly tokenService: TokenService,
+    private readonly accessContext: AccessContextResolver,
   ) {}
 
   async execute(input: LoginInput): Promise<SessionOutput> {
@@ -39,6 +40,7 @@ export class LoginWithPasswordUseCase {
       tokenService: this.tokenService,
       refreshTokens: this.refreshTokens,
       authProvider: 'password',
+      accessContext: this.accessContext,
       userAgent: input.userAgent,
       ip: input.ip,
     });

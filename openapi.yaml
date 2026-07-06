@@ -1,23 +1,36 @@
 openapi: 3.0.3
 
 info:
-  title: auth-service API
-  version: 1.0.0
+  title: auth-service API (identidad y acceso)
+  version: 2.0.0
   description: >
-    Servicio de autenticación del ecosistema CRM. Gestiona credenciales,
-    emite y rota tokens JWT, y permite iniciar sesión o crear cuenta con Google
-    (flujo de ID Token, sin client_secret en el backend).
-    No gestiona roles ni permisos (eso es de identity-service).
+    Servicio único de identidad del ecosistema CRM: **autenticación** (credenciales,
+    JWT, Google Sign-In) **y autorización (RBAC)** (usuarios, roles, permisos,
+    membresía a organizaciones). Emite un access token JWT (RS256, ~15 min) que
+    lleva `sub`, `email`, `org_id`, `country_code`, `permissions[]` y `pv`
+    (permissions_version, para revocación instantánea). El gateway y los servicios
+    verifican con la clave pública, sin llamar a auth en cada request.
+
+
+    Estado: todos los endpoints están implementados. Ver `RBAC-IMPLEMENTATION.md`.
 
 servers:
   - url: http://localhost:3001
-    description: Desarrollo local
+    description: Desarrollo local (puerto interno; en producción va detrás del api-gateway)
 
 tags:
   - name: health
     description: Estado del servicio
   - name: auth
     description: Registro, inicio de sesión y manejo de tokens
+  - name: onboarding
+    description: Completar perfil y organización activa
+  - name: users
+    description: Administración de usuarios (RBAC)
+  - name: roles
+    description: Administración de roles y permisos (RBAC)
+  - name: permissions
+    description: Catálogo de permisos
 
 paths:
 
@@ -25,7 +38,6 @@ paths:
     get:
       tags: [health]
       summary: Healthcheck
-      description: Verifica que el servicio está arriba.
       security: []
       responses:
         '200':
@@ -35,45 +47,42 @@ paths:
               schema:
                 type: object
                 properties:
-                  status:
-                    type: string
-                    example: ok
+                  status: { type: string, example: ok }
 
+  # ---------------------------------------------------------------------------
+  # Autenticación (implementado)
+  # ---------------------------------------------------------------------------
   /auth/register:
     post:
       tags: [auth]
       summary: Crear cuenta con email y contraseña
       description: >
-        Registra una nueva credencial. Genera el `user_id` (sub del JWT),
-        emite el evento `auth.credential.registered` y devuelve los tokens.
+        Registra una credencial y su usuario (persona). Genera el `user_id`
+        (sub del JWT) y emite `identity.user.created`. El token resultante sale
+        con `org_id: null`, `permissions: []`, `pv: 0`: el usuario aún debe
+        completar onboarding (crear/aceptar organización) e identificación.
+        `register` **no** crea organización (eso es del flujo de onboarding).
       security: []
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterRequest'
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
             examples:
               ejemplo:
-                value:
-                  email: ana@empresa.com
-                  password: "S3guraContrasena!"
+                value: { email: ana@empresa.com, password: "S3guraContrasena!" }
       responses:
         '201':
           description: Cuenta creada
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/TokenResponse'
+              schema: { $ref: '#/components/schemas/TokenResponse' }
         '409':
           description: El email ya está registrado
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                code: EMAIL_ALREADY_EXISTS
-                message: El email ya está registrado.
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: EMAIL_ALREADY_EXISTS, message: El email ya está registrado. }
         '422':
           $ref: '#/components/responses/ValidationError'
 
@@ -81,35 +90,30 @@ paths:
     post:
       tags: [auth]
       summary: Iniciar sesión con email y contraseña
-      description: Verifica las credenciales y devuelve access + refresh token.
+      description: >
+        Verifica credenciales y devuelve access + refresh token. El access token
+        se firma resolviendo los permisos del usuario en su organización activa.
       security: []
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
+            schema: { $ref: '#/components/schemas/LoginRequest' }
             examples:
               ejemplo:
-                value:
-                  email: ana@empresa.com
-                  password: "S3guraContrasena!"
+                value: { email: ana@empresa.com, password: "S3guraContrasena!" }
       responses:
         '200':
           description: Autenticación correcta
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/TokenResponse'
+              schema: { $ref: '#/components/schemas/TokenResponse' }
         '401':
           description: Credenciales inválidas
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                code: INVALID_CREDENTIALS
-                message: Email o contraseña incorrectos.
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: INVALID_CREDENTIALS, message: Email o contraseña incorrectos. }
         '422':
           $ref: '#/components/responses/ValidationError'
 
@@ -118,31 +122,23 @@ paths:
       tags: [auth]
       summary: Iniciar sesión o crear cuenta con Google
       description: >
-        Recibe el ID Token emitido por Google Identity Services en el front.
-        El backend verifica firma, audiencia (`GOOGLE_CLIENT_ID`), emisor y
-        expiración. Comportamiento:
-        (1) si el `sub` de Google ya está vinculado, inicia sesión;
-        (2) si el email ya existe como cuenta local verificada, la vincula;
-        (3) si no existe, crea la cuenta (sin contraseña).
-        No requiere client_secret.
+        Recibe el ID Token de Google Identity Services. El backend verifica firma,
+        audiencia (`GOOGLE_CLIENT_ID`), emisor y expiración. (1) Si el `sub` de
+        Google ya está vinculado, inicia sesión; (2) si el email ya existe como
+        cuenta verificada, la vincula; (3) si no, crea la cuenta (sin contraseña).
+        El usuario creado por Google no trae identificación: debe completar perfil.
       security: []
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/GoogleAuthRequest'
-            examples:
-              ejemplo:
-                value:
-                  idToken: "eyJhbGciOiJSUzI1NiIsImtpZCI6Ij..."
+            schema: { $ref: '#/components/schemas/GoogleAuthRequest' }
       responses:
         '200':
-          description: Autenticación correcta (sesión iniciada, vinculada o cuenta creada)
+          description: Sesión iniciada, vinculada o cuenta creada
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/TokenResponse'
+              schema: { $ref: '#/components/schemas/TokenResponse' }
               examples:
                 usuario-nuevo:
                   summary: Cuenta creada
@@ -161,11 +157,8 @@ paths:
           description: ID Token inválido o expirado
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                code: INVALID_GOOGLE_TOKEN
-                message: El token de Google no es válido.
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: INVALID_GOOGLE_TOKEN, message: El token de Google no es válido. }
         '422':
           $ref: '#/components/responses/ValidationError'
 
@@ -174,35 +167,27 @@ paths:
       tags: [auth]
       summary: Renovar el access token
       description: >
-        Valida el refresh token (no expirado, no revocado), lo rota
-        (revoca el actual y emite uno nuevo) y devuelve un nuevo access token.
+        Valida el refresh token (no expirado, no revocado), lo **rota** (revoca el
+        actual, emite uno nuevo) y devuelve un access token fresco (con permisos y
+        `pv` actualizados). La rotación con detección de reuso revoca la cadena.
       security: []
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshRequest'
-            examples:
-              ejemplo:
-                value:
-                  refreshToken: "9f8c2a1e-7b6d-4c3a-8e2f-1a0b9c8d7e6f"
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
       responses:
         '200':
           description: Tokens renovados
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/TokenResponse'
+              schema: { $ref: '#/components/schemas/TokenResponse' }
         '401':
           description: Refresh token inválido, expirado o revocado
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                code: INVALID_REFRESH_TOKEN
-                message: El refresh token no es válido.
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: INVALID_REFRESH_TOKEN, message: El refresh token no es válido. }
         '422':
           $ref: '#/components/responses/ValidationError'
 
@@ -210,21 +195,15 @@ paths:
     post:
       tags: [auth]
       summary: Cerrar sesión (revocar refresh token)
-      description: Marca el refresh token como revocado. Operación idempotente.
+      description: Marca el refresh token como revocado. Idempotente.
       security: []
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/LogoutRequest'
-            examples:
-              ejemplo:
-                value:
-                  refreshToken: "9f8c2a1e-7b6d-4c3a-8e2f-1a0b9c8d7e6f"
+            schema: { $ref: '#/components/schemas/LogoutRequest' }
       responses:
-        '204':
-          description: Sesión cerrada (sin contenido)
+        '204': { description: Sesión cerrada (sin contenido) }
         '422':
           $ref: '#/components/responses/ValidationError'
 
@@ -232,7 +211,9 @@ paths:
     get:
       tags: [auth]
       summary: Datos de la sesión actual
-      description: Devuelve la información del usuario asociado al access token.
+      description: >
+        Devuelve el usuario del access token, incluyendo (si aplica) su
+        identificación, organización activa y permisos efectivos.
       security:
         - bearerAuth: []
       responses:
@@ -240,23 +221,283 @@ paths:
           description: Información del usuario autenticado
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/MeResponse'
-              example:
-                id: 6f3b9c2a-1d4e-4a8b-9c7f-2e1a0b3c4d5e
-                email: ana@empresa.com
-                emailVerified: true
-                authProvider: password
-                createdAt: "2026-06-30T14:05:00Z"
+              schema: { $ref: '#/components/schemas/MeResponse' }
         '401':
-          description: Token ausente, inválido o expirado
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------------------
+  # Onboarding
+  # ---------------------------------------------------------------------------
+  /auth/complete-profile:
+    post:
+      tags: [onboarding]
+      summary: Completar perfil (nombre + identificación)
+
+      description: >
+        Fija el nombre y la **identificación** (cédula/RUC/pasaporte) del usuario.
+        Requerido para "activar" cuentas creadas por Google o por invitación (que
+        nacen sin identificación). Unicidad global sobre (tipo, número).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompleteProfileRequest' }
+            examples:
+              ec-cedula:
+                value: { fullName: Ana Pérez, identificationType: cedula, identificationNumber: "1712345678" }
+      responses:
+        '200':
+          description: Perfil actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: Identificación ya registrada por otro usuario
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: IDENTIFICATION_ALREADY_EXISTS, message: La identificación ya está registrada. }
+        '422':
+          description: Identificación o datos inválidos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: INVALID_IDENTIFICATION, message: La identificación no es válida. }
+
+  /auth/switch-organization:
+    post:
+      tags: [onboarding]
+      summary: Cambiar la organización activa del token
+
+      description: >
+        Para usuarios con membresía en varias organizaciones. Verifica membresía
+        activa y reemite el token con el nuevo `org_id`, sus permisos y `pv`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SwitchOrgRequest' }
+      responses:
+        '200':
+          description: Token reemitido para la organización indicada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: El usuario no pertenece a esa organización
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: NOT_ORG_MEMBER, message: El usuario no pertenece a esa organización. }
+
+  # ---------------------------------------------------------------------------
+  # Usuarios (RBAC) — enforcement de permiso en el gateway y aquí
+  # ---------------------------------------------------------------------------
+  /users:
+    get:
+      tags: [users]
+      summary: Listar usuarios de la organización activa
+
+      x-required-permission: user:read
+      description: Requiere el permiso `user:read`. Opera dentro del `org_id` del token.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de usuarios
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                code: UNAUTHORIZED
-                message: Token ausente o inválido.
+                type: array
+                items: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /users/invite:
+    post:
+      tags: [users]
+      summary: Invitar un usuario a la organización activa
+
+      x-required-permission: user:invite
+      description: >
+        Crea (o reutiliza) el usuario por email y lo **ata** a la organización
+        activa con un rol (membership + user_role). Emite `identity.user.created`
+        y `identity.user.role_assigned`. El invitado completa contraseña/perfil aparte.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InviteUserRequest' }
+      responses:
+        '201':
+          description: Usuario invitado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: El rol indicado no existe en la organización
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: ROLE_NOT_FOUND, message: Rol no encontrado. }
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /users/{id}/roles:
+    post:
+      tags: [users]
+      summary: Asignar un rol a un usuario
+
+      x-required-permission: user:assign_role
+      description: >
+        Asigna un rol de la organización activa al usuario. Incrementa `pv` del
+        usuario (revocación) y emite `identity.user.role_assigned`. No se puede
+        dejar la organización sin su último Administrador.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignRoleRequest' }
+      responses:
+        '204': { description: Rol asignado }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Usuario o rol no encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /users/{id}/disable:
+    post:
+      tags: [users]
+      summary: Deshabilitar un usuario
+      x-status: designed
+      x-required-permission: user:update
+      description: >
+        Deshabilita al usuario, incrementa su `pv` (revocación inmediata de acceso)
+        y emite `identity.user.disabled`. No puede deshabilitar al último Administrador.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '204': { description: Usuario deshabilitado }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Usuario no encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  # ---------------------------------------------------------------------------
+  # Roles (RBAC)
+  # ---------------------------------------------------------------------------
+  /roles:
+    get:
+      tags: [roles]
+      summary: Listar roles de la organización activa
+
+      x-required-permission: user:read
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Role' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [roles]
+      summary: Crear un rol en la organización activa
+
+      x-required-permission: user:assign_role
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRoleRequest' }
+      responses:
+        '201':
+          description: Rol creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Role' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /roles/{id}/permissions:
+    patch:
+      tags: [roles]
+      summary: Actualizar los permisos de un rol
+
+      x-required-permission: user:assign_role
+      description: >
+        Reemplaza el conjunto de permisos del rol. Incrementa `pv` de **todos** los
+        usuarios que tienen ese rol y emite `identity.role.updated`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RoleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateRolePermissionsRequest' }
+      responses:
+        '204': { description: Permisos actualizados }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Rol no encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: ROLE_NOT_FOUND, message: Rol no encontrado. }
+
+  # ---------------------------------------------------------------------------
+  # Permisos (catálogo)
+  # ---------------------------------------------------------------------------
+  /permissions:
+    get:
+      tags: [permissions]
+      summary: Catálogo de permisos de la plataforma
+
+      description: Lista global de permisos `recurso:acción`. Solo requiere estar autenticado.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Catálogo de permisos
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Permission' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
 components:
 
@@ -265,19 +506,33 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Access token JWT firmado en RS256. Enviar en `Authorization: Bearer <token>`.
+      description: >
+        Access token JWT firmado en RS256. Enviar en `Authorization: Bearer <token>`.
+        Claims: ver `AccessTokenClaims`. Las rutas RBAC exigen además el permiso
+        indicado en `x-required-permission` (validado contra el claim `permissions`).
+
+  parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      description: user_id
+      schema: { type: string, format: uuid }
+    RoleId:
+      name: id
+      in: path
+      required: true
+      description: role_id
+      schema: { type: string, format: uuid }
 
   schemas:
 
+    # --- Auth ---------------------------------------------------------------
     RegisterRequest:
       type: object
       required: [email, password]
       properties:
-        email:
-          type: string
-          format: email
-          maxLength: 255
-          example: ana@empresa.com
+        email: { type: string, format: email, maxLength: 255, example: ana@empresa.com }
         password:
           type: string
           format: password
@@ -290,14 +545,8 @@ components:
       type: object
       required: [email, password]
       properties:
-        email:
-          type: string
-          format: email
-          example: ana@empresa.com
-        password:
-          type: string
-          format: password
-          example: "S3guraContrasena!"
+        email: { type: string, format: email, example: ana@empresa.com }
+        password: { type: string, format: password, example: "S3guraContrasena!" }
 
     GoogleAuthRequest:
       type: object
@@ -312,17 +561,13 @@ components:
       type: object
       required: [refreshToken]
       properties:
-        refreshToken:
-          type: string
-          example: "9f8c2a1e-7b6d-4c3a-8e2f-1a0b9c8d7e6f"
+        refreshToken: { type: string, example: "9f8c2a1e-7b6d-4c3a-8e2f-1a0b9c8d7e6f" }
 
     LogoutRequest:
       type: object
       required: [refreshToken]
       properties:
-        refreshToken:
-          type: string
-          example: "9f8c2a1e-7b6d-4c3a-8e2f-1a0b9c8d7e6f"
+        refreshToken: { type: string, example: "9f8c2a1e-7b6d-4c3a-8e2f-1a0b9c8d7e6f" }
 
     TokenResponse:
       type: object
@@ -330,16 +575,10 @@ components:
       properties:
         accessToken:
           type: string
-          description: JWT de acceso (corta vida).
+          description: JWT de acceso (RS256, corta vida). Sus claims: ver AccessTokenClaims.
           example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
-        tokenType:
-          type: string
-          enum: [Bearer]
-          example: Bearer
-        expiresIn:
-          type: integer
-          description: Segundos de validez del access token.
-          example: 900
+        tokenType: { type: string, enum: [Bearer], example: Bearer }
+        expiresIn: { type: integer, description: Segundos de validez del access token., example: 900 }
         refreshToken:
           type: string
           description: Refresh token opaco (larga vida). Se rota en cada uso.
@@ -348,94 +587,204 @@ components:
           type: boolean
           description: Presente en /auth/google; true si se creó la cuenta en esta petición.
           example: false
-        user:
-          $ref: '#/components/schemas/UserSummary'
+        user: { $ref: '#/components/schemas/UserSummary' }
+
+    AccessTokenClaims:
+      type: object
+      description: >
+        Documentación de los claims que viajan **dentro** del accessToken (no es un
+        cuerpo de respuesta). El gateway/servicios los verifican con la clave pública.
+      properties:
+        iss: { type: string, example: auth-service }
+        aud: { type: string, example: crm-api }
+        sub: { type: string, format: uuid, description: user_id }
+        email: { type: string, format: email }
+        org_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Organización activa; null si el usuario aún no tiene membresía.
+        country_code: { type: string, nullable: true, example: EC }
+        permissions:
+          type: array
+          items: { type: string, example: customer:read }
+        pv: { type: integer, description: permissions_version (revocación instantánea)., example: 3 }
+        token_use: { type: string, enum: [access], example: access }
+        iat: { type: integer }
+        exp: { type: integer }
 
     UserSummary:
       type: object
       required: [id, email, emailVerified]
       properties:
-        id:
-          type: string
-          format: uuid
-          description: user_id (sub del JWT).
-          example: 6f3b9c2a-1d4e-4a8b-9c7f-2e1a0b3c4d5e
-        email:
-          type: string
-          format: email
-          example: ana@empresa.com
-        emailVerified:
-          type: boolean
-          example: true
-        authProvider:
-          type: string
-          enum: [password, google]
-          description: Cómo se autenticó en esta sesión.
-          example: password
+        id: { type: string, format: uuid, description: user_id (sub del JWT)., example: 6f3b9c2a-1d4e-4a8b-9c7f-2e1a0b3c4d5e }
+        email: { type: string, format: email, example: ana@empresa.com }
+        emailVerified: { type: boolean, example: true }
+        authProvider: { type: string, enum: [password, google], example: password }
 
     MeResponse:
       type: object
       required: [id, email, emailVerified, createdAt]
       properties:
-        id:
+        id: { type: string, format: uuid, example: 6f3b9c2a-1d4e-4a8b-9c7f-2e1a0b3c4d5e }
+        email: { type: string, format: email, example: ana@empresa.com }
+        emailVerified: { type: boolean, example: true }
+        authProvider: { type: string, enum: [password, google], example: password }
+        fullName: { type: string, nullable: true, example: Ana Pérez }
+        identification:
+          allOf:
+            - $ref: '#/components/schemas/Identification'
+          nullable: true
+        orgId:
           type: string
           format: uuid
-          example: 6f3b9c2a-1d4e-4a8b-9c7f-2e1a0b3c4d5e
-        email:
-          type: string
-          format: email
-          example: ana@empresa.com
-        emailVerified:
-          type: boolean
-          example: true
-        authProvider:
-          type: string
-          enum: [password, google]
-          example: password
-        createdAt:
-          type: string
-          format: date-time
-          example: "2026-06-30T14:05:00Z"
+          nullable: true
+          description: Organización activa de la sesión (null = onboarding incompleto).
+        permissions:
+          type: array
+          description: Permisos efectivos en la organización activa.
+          items: { type: string, example: customer:read }
+        createdAt: { type: string, format: date-time, example: "2026-06-30T14:05:00Z" }
 
+    # --- Identidad de la persona -------------------------------------------
+    Identification:
+      type: object
+      required: [type, number]
+      description: Identificación real de la persona (distinta de la del cliente del CRM).
+      properties:
+        type:
+          type: string
+          enum: [cedula, ruc, passport, dni]
+          example: cedula
+        number:
+          type: string
+          maxLength: 30
+          example: "1712345678"
+
+    CompleteProfileRequest:
+      type: object
+      required: [fullName, identificationType, identificationNumber]
+      properties:
+        fullName: { type: string, maxLength: 255, example: Ana Pérez }
+        identificationType: { type: string, enum: [cedula, ruc, passport, dni], example: cedula }
+        identificationNumber: { type: string, maxLength: 30, example: "1712345678" }
+
+    SwitchOrgRequest:
+      type: object
+      required: [organizationId]
+      properties:
+        organizationId: { type: string, format: uuid }
+
+    # --- RBAC ---------------------------------------------------------------
+    User:
+      type: object
+      required: [id, email, status]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        fullName: { type: string, nullable: true }
+        identification:
+          allOf:
+            - $ref: '#/components/schemas/Identification'
+          nullable: true
+        status: { type: string, enum: [active, disabled] }
+        roles:
+          type: array
+          description: Roles del usuario en la organización de contexto.
+          items: { type: string, example: Vendedor }
+
+    Role:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid, nullable: true, description: null = plantilla global. }
+        name: { type: string, example: Vendedor }
+        description: { type: string, nullable: true }
+        isSystem: { type: boolean, example: false }
+        permissions:
+          type: array
+          items: { type: string, example: customer:create }
+
+    Permission:
+      type: object
+      required: [code, resource, action]
+      properties:
+        code: { type: string, example: invoice:create }
+        resource: { type: string, example: invoice }
+        action: { type: string, example: create }
+        description: { type: string, nullable: true }
+
+    InviteUserRequest:
+      type: object
+      required: [email, roleId]
+      properties:
+        email: { type: string, format: email, example: pedro@empresa.com }
+        roleId: { type: string, format: uuid }
+
+    AssignRoleRequest:
+      type: object
+      required: [roleId]
+      properties:
+        roleId: { type: string, format: uuid }
+
+    CreateRoleRequest:
+      type: object
+      required: [name, permissions]
+      properties:
+        name: { type: string, example: Supervisor }
+        description: { type: string, nullable: true }
+        permissions:
+          type: array
+          items: { type: string, example: customer:read }
+
+    UpdateRolePermissionsRequest:
+      type: object
+      required: [permissions]
+      properties:
+        permissions:
+          type: array
+          items: { type: string, example: customer:read }
+
+    # --- Error ---------------------------------------------------------------
     Error:
       type: object
       required: [code, message]
       properties:
-        code:
-          type: string
-          description: Código de error legible por máquina.
-          example: INVALID_CREDENTIALS
-        message:
-          type: string
-          description: Mensaje legible por humanos.
-          example: Email o contraseña incorrectos.
+        code: { type: string, description: Código de error legible por máquina., example: INVALID_CREDENTIALS }
+        message: { type: string, description: Mensaje legible por humanos., example: Email o contraseña incorrectos. }
         details:
           type: array
           description: Detalle por campo (presente en errores de validación).
           items:
             type: object
             properties:
-              field:
-                type: string
-                example: email
-              message:
-                type: string
-                example: Email inválido.
+              field: { type: string, example: email }
+              message: { type: string, example: Email inválido. }
 
   responses:
     ValidationError:
       description: Error de validación de la petición
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
+          schema: { $ref: '#/components/schemas/Error' }
           example:
             code: VALIDATION_ERROR
             message: La petición no es válida.
             details:
-              - field: email
-                message: Email inválido.
-              - field: password
-                message: Debe tener al menos 8 caracteres.
+              - { field: email, message: Email inválido. }
+              - { field: password, message: Debe tener al menos 8 caracteres. }
+    Unauthorized:
+      description: Token ausente, inválido o expirado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: UNAUTHORIZED, message: Token ausente o inválido. }
+    Forbidden:
+      description: Permiso insuficiente
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: FORBIDDEN, message: Permiso insuficiente. }
 
 security: []

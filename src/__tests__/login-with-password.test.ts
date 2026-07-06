@@ -3,6 +3,7 @@ import { LoginWithPasswordUseCase } from '../application/use-cases/login-with-pa
 import {
   InMemoryCredentialRepository,
   InMemoryRefreshTokenRepository,
+  MockAccessContextResolver,
   MockPasswordHasher,
   MockTokenService,
 } from './helpers';
@@ -15,6 +16,7 @@ describe('LoginWithPasswordUseCase', () => {
   let refreshTokens: InMemoryRefreshTokenRepository;
   let hasher: MockPasswordHasher;
   let tokenService: MockTokenService;
+  let accessContext: MockAccessContextResolver;
   let useCase: LoginWithPasswordUseCase;
 
   beforeEach(() => {
@@ -22,11 +24,13 @@ describe('LoginWithPasswordUseCase', () => {
     refreshTokens = new InMemoryRefreshTokenRepository();
     hasher = new MockPasswordHasher();
     tokenService = new MockTokenService();
+    accessContext = new MockAccessContextResolver();
     useCase = new LoginWithPasswordUseCase(
       credentials,
       refreshTokens,
       hasher,
       tokenService,
+      accessContext,
     );
   });
 

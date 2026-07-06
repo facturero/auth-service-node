@@ -1,8 +1,10 @@
 import { Credential, OAuthAccount } from '../../domain/entities';
+import { Organization, User } from '../../domain/rbac';
 import { Email } from '../../domain/value-objects';
-import { AccountDisabledError } from '../../domain/errors';
+import { AccountDisabledError, IdentificationAlreadyExistsError } from '../../domain/errors';
 import { Repositories } from '../../domain/repositories';
-import { GoogleIdTokenVerifier, TokenService, UnitOfWork } from '../ports';
+import { AccessContextResolver, GoogleIdTokenVerifier, TokenService, UnitOfWork } from '../ports';
+import { SeedOrganizationRolesUseCase } from './seed-organization-roles';
 import { GoogleAuthInput, SessionOutput } from '../dtos';
 import { issueSession } from '../session';
 
@@ -18,20 +20,19 @@ export class LoginWithGoogleUseCase {
     private readonly googleVerifier: GoogleIdTokenVerifier,
     private readonly uow: UnitOfWork,
     private readonly tokenService: TokenService,
+    private readonly accessContext: AccessContextResolver,
+    private readonly seedOrgRoles: SeedOrganizationRolesUseCase,
   ) {}
 
   async execute(input: GoogleAuthInput): Promise<SessionOutput> {
-    // La verificación (firma, aud, exp) ocurre fuera de la transacción.
     const profile = await this.googleVerifier.verify(input.idToken);
     const email = Email.create(profile.email);
 
     return this.uow.execute(async (repos) => {
-      // (1) ¿Ya está vinculada esta cuenta de Google?
       const linked = await repos.oauthAccounts.findByProvider('google', profile.sub);
       if (linked) {
         const credential = await repos.credentials.findById(linked.credentialId);
         if (!credential) {
-          // Inconsistencia: vínculo sin credencial. Tratar como no vinculado.
           return this.createLinkedAccount(repos, email, profile.sub, profile.emailVerified, input);
         }
         if (!credential.isActive()) {
@@ -43,12 +44,12 @@ export class LoginWithGoogleUseCase {
           refreshTokens: repos.refreshTokens,
           authProvider: 'google',
           isNewUser: false,
+          accessContext: this.accessContext,
           userAgent: input.userAgent,
           ip: input.ip,
         });
       }
 
-      // (2) ¿Existe ya una cuenta local con ese email (verificado)?
       const existing = await repos.credentials.findByEmail(email.value);
       if (existing && profile.emailVerified) {
         if (!existing.isActive()) {
@@ -86,17 +87,16 @@ export class LoginWithGoogleUseCase {
           refreshTokens: repos.refreshTokens,
           authProvider: 'google',
           isNewUser: false,
+          accessContext: this.accessContext,
           userAgent: input.userAgent,
           ip: input.ip,
         });
       }
 
-      // (3) No existe -> crear cuenta nueva.
       return this.createLinkedAccount(repos, email, profile.sub, profile.emailVerified, input);
     });
   }
 
-  /** Crea credencial (sin contraseña) + vínculo OAuth + evento, y emite sesión. */
   private async createLinkedAccount(
     repos: Repositories,
     email: Email,
@@ -105,6 +105,21 @@ export class LoginWithGoogleUseCase {
     input: GoogleAuthInput,
   ): Promise<SessionOutput> {
     const credential = Credential.createWithGoogle({ email, emailVerified });
+
+    const hasIdentification = !!input.identification;
+    if (hasIdentification) {
+      const existingIdent = await repos.users.findByIdentification(input.identification!);
+      if (existingIdent) {
+        throw new IdentificationAlreadyExistsError();
+      }
+    }
+
+    const user = User.create({
+      id: credential.userId,
+      email: credential.email,
+      identification: input.identification ?? null,
+    });
+    await repos.users.save(user);
     await repos.credentials.save(credential);
 
     const account = OAuthAccount.create({
@@ -115,15 +130,27 @@ export class LoginWithGoogleUseCase {
     });
     await repos.oauthAccounts.save(account);
 
+    let organizationId: string | undefined;
+    if (hasIdentification) {
+      const org = Organization.create({});
+      await repos.organizations.save(org);
+      organizationId = org.id;
+
+      await this.seedOrgRoles.seed(
+        { organizationId: org.id, countryCode: null, name: null, founderUserId: user.id },
+        repos,
+      );
+    }
+
     await repos.outbox.add({
-      type: 'auth.credential.registered',
-      aggregateType: 'credential',
-      aggregateId: credential.id,
+      type: 'identity.user.created',
+      aggregateType: 'user',
+      aggregateId: user.id,
       payload: {
-        credentialId: credential.id,
-        userId: credential.userId,
-        email: credential.email,
-        provider: 'google',
+        userId: user.id,
+        email: user.email,
+        identification: input.identification ?? null,
+        organizationId: organizationId ?? null,
       },
       occurredAt: new Date(),
     });
@@ -134,6 +161,10 @@ export class LoginWithGoogleUseCase {
       refreshTokens: repos.refreshTokens,
       authProvider: 'google',
       isNewUser: true,
+      needsOrg: !hasIdentification,
+      organizationId,
+      accessContext: this.accessContext,
+      preferredOrgId: organizationId ?? null,
       userAgent: input.userAgent,
       ip: input.ip,
     });

@@ -14,6 +14,10 @@ export const registerSchema = z.object({
     .string()
     .min(8, 'Debe tener al menos 8 caracteres.')
     .max(128, 'Máximo 128 caracteres.'),
+  identification: z
+    .string()
+    .min(1, 'La cédula es obligatoria.')
+    .max(20, 'Máximo 20 caracteres.'),
 });
 
 export const loginSchema = z.object({
@@ -23,6 +27,7 @@ export const loginSchema = z.object({
 
 export const googleSchema = z.object({
   idToken: z.string().min(1, 'idToken es obligatorio.'),
+  identification: z.string().max(20).optional(),
 });
 
 export const refreshSchema = z.object({
@@ -31,6 +36,37 @@ export const refreshSchema = z.object({
 
 export const logoutSchema = z.object({
   refreshToken: z.string().min(1, 'refreshToken es obligatorio.'),
+});
+
+export const switchOrgSchema = z.object({
+  organizationId: z.string().uuid('organizationId debe ser un UUID válido.'),
+});
+
+export const inviteUserSchema = z.object({
+  email: z.string().email('Email inválido.'),
+  roleId: z.string().uuid('roleId debe ser un UUID válido.'),
+});
+
+export const assignRoleSchema = z.object({
+  roleId: z.string().uuid('roleId debe ser un UUID válido.'),
+});
+
+export const createRoleSchema = z.object({
+  name: z.string().min(1, 'El nombre es obligatorio.').max(100),
+  description: z.string().max(255).optional(),
+  permissions: z.array(z.string()).default([]),
+});
+
+export const updateRolePermissionsSchema = z.object({
+  permissions: z.array(z.string()).min(1, 'Debe especificar al menos un permiso.'),
+});
+
+export const completeProfileSchema = z.object({
+  fullName: z.string().min(1, 'El nombre es obligatorio.').max(255),
+  identificationType: z.enum(['cedula', 'ruc', 'passport', 'dni'], {
+    errorMap: () => ({ message: 'Tipo de identificación inválido. Debe ser cedula, ruc, passport o dni.' }),
+  }),
+  identificationNumber: z.string().min(1, 'El número de identificación es obligatorio.').max(30),
 });
 
 /** Envuelve zValidator('json', schema) traduciendo errores a ValidationError. */

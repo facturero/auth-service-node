@@ -4,6 +4,7 @@ import { Email } from '../domain/value-objects';
 import { Credential, RefreshToken } from '../domain/entities';
 import {
   InMemoryUnitOfWork,
+  MockAccessContextResolver,
   MockTokenService,
 } from './helpers';
 import { InvalidRefreshTokenError, AccountDisabledError } from '../domain/errors';
@@ -11,12 +12,14 @@ import { InvalidRefreshTokenError, AccountDisabledError } from '../domain/errors
 describe('RefreshTokenUseCase', () => {
   let uow: InMemoryUnitOfWork;
   let tokenService: MockTokenService;
+  let accessContext: MockAccessContextResolver;
   let useCase: RefreshTokenUseCase;
 
   beforeEach(() => {
     uow = new InMemoryUnitOfWork();
     tokenService = new MockTokenService();
-    useCase = new RefreshTokenUseCase(uow, tokenService);
+    accessContext = new MockAccessContextResolver();
+    useCase = new RefreshTokenUseCase(uow, tokenService, accessContext);
   });
 
   async function seedSession(): Promise<string> {
