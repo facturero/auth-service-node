@@ -62,6 +62,7 @@ export interface RoleRepository {
   findByOrganization(organizationId: string): Promise<Role[]>;
   save(role: Role): Promise<void>;
   setPermissions(roleId: string, permissionIds: string[]): Promise<void>;
+  getPermissionCodes(roleId: string): Promise<string[]>;
 }
 
 export interface PermissionRepository {
@@ -78,6 +79,7 @@ export interface MembershipRepository {
 export interface UserRoleRepository {
   assign(userRole: UserRole): Promise<void>;
   remove(userId: string, organizationId: string, roleId: string): Promise<void>;
+  removeAllByUser(userId: string, organizationId: string): Promise<void>;
   listByUserAndOrg(userId: string, organizationId: string): Promise<UserRole[]>;
   listUserIdsByRole(roleId: string): Promise<string[]>;
 }

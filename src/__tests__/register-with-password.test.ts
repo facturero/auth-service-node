@@ -21,7 +21,7 @@ describe('RegisterWithPasswordUseCase', () => {
     tokenService = new MockTokenService();
     accessContext = new MockAccessContextResolver();
     seedOrg = new SeedOrganizationRolesUseCase(uow);
-    useCase = new RegisterWithPasswordUseCase(uow, hasher, tokenService, accessContext, seedOrg);
+    useCase = new RegisterWithPasswordUseCase(uow, hasher, tokenService, accessContext, seedOrg, uow.refreshTokens);
   });
 
   it('registers a new user and returns a session', async () => {

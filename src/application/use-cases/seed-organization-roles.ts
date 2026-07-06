@@ -29,6 +29,12 @@ export class SeedOrganizationRolesUseCase {
         isSystem: true,
       });
       await repos.roles.save(cloned);
+
+      const permissionCodes = await repos.roles.getPermissionCodes(tmpl.id);
+      if (permissionCodes.length > 0) {
+        const permissionIds = await repos.permissions.findIdsByCodes(permissionCodes);
+        await repos.roles.setPermissions(cloned.id, permissionIds);
+      }
     }
 
     const orgRoles = await repos.roles.findByOrganization(input.organizationId);

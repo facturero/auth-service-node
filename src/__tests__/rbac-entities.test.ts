@@ -18,16 +18,17 @@ describe('User', () => {
 
   it('fromPersistence restores custom values', () => {
     const u = User.fromPersistence({
-      id: 'u1',
-      email: 'test@test.com',
-      identification: null,
-      fullName: null,
-      status: 'active',
-      isPlatformAdmin: true,
-      permissionsVersion: 5,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
+        id: 'u1',
+        email: 'test@test.com',
+        identification: null,
+        fullName: null,
+        avatarFileId: null,
+        status: 'active',
+        isPlatformAdmin: true,
+        permissionsVersion: 5,
+        createdAt: new Date('2024-01-01'),
+        updatedAt: new Date('2024-06-01'),
+      });
     expect(u.isPlatformAdmin).toBe(true);
     expect(u.permissionsVersion).toBe(5);
   });
@@ -44,16 +45,17 @@ describe('User', () => {
   it('round-trips via toPersistence / fromPersistence', () => {
     const now = new Date();
     const u = User.fromPersistence({
-      id: 'u-1',
-      email: 'u@t.com',
-      identification: '123',
-      fullName: null,
-      status: 'active',
-      isPlatformAdmin: true,
-      permissionsVersion: 42,
-      createdAt: now,
-      updatedAt: now,
-    });
+        id: 'u1',
+        email: 'test@test.com',
+        identification: 'cedula:123',
+        fullName: 'Test User',
+        avatarFileId: null,
+        status: 'active',
+        isPlatformAdmin: true,
+        permissionsVersion: 0,
+        createdAt: new Date('2024-01-01'),
+        updatedAt: new Date('2024-06-01'),
+      });
     expect(u.toPersistence()).toEqual({
       id: 'u-1',
       email: 'u@t.com',

@@ -1,30 +1,35 @@
 import { Identification } from '../../domain/value-objects';
+import { Organization } from '../../domain/rbac';
+import { RefreshTokenRepository } from '../../domain/repositories';
 import { IdentificationAlreadyExistsError, UserNotFoundError } from '../../domain/errors';
-import { Repositories } from '../../domain/repositories';
-import { UnitOfWork } from '../ports';
+import { AccessContextResolver, TokenService, UnitOfWork } from '../ports';
+import { SeedOrganizationRolesUseCase } from './seed-organization-roles';
+import { issueSession } from '../session';
+import { SessionOutput } from '../dtos';
 
 export interface CompleteProfileInput {
   userId: string;
   fullName: string;
   identificationType: string;
   identificationNumber: string;
-}
-
-export interface CompleteProfileOutput {
-  id: string;
-  email: string;
-  fullName: string | null;
-  identification: { type: string; number: string } | null;
-  status: string;
+  avatarFileId?: string | null;
+  userAgent?: string | null;
+  ip?: string | null;
 }
 
 export class CompleteProfileUseCase {
-  constructor(private readonly uow: UnitOfWork) {}
+  constructor(
+    private readonly uow: UnitOfWork,
+    private readonly tokenService: TokenService,
+    private readonly accessContext: AccessContextResolver,
+    private readonly seedOrgRoles: SeedOrganizationRolesUseCase,
+    private readonly refreshTokens: RefreshTokenRepository,
+  ) {}
 
-  async execute(input: CompleteProfileInput): Promise<CompleteProfileOutput> {
+  async execute(input: CompleteProfileInput): Promise<SessionOutput> {
     const id = Identification.create(input.identificationType, input.identificationNumber);
 
-    return this.uow.execute(async (repos: Repositories) => {
+    const { credential, orgId, avatarFileId } = await this.uow.execute(async (repos) => {
       const user = await repos.users.findById(input.userId);
       if (!user) {
         throw new UserNotFoundError();
@@ -35,7 +40,12 @@ export class CompleteProfileUseCase {
         throw new IdentificationAlreadyExistsError();
       }
 
-      user.completeProfile({ fullName: input.fullName, identification: id.toString() });
+      const credential = await repos.credentials.findByUserId(input.userId);
+      if (!credential) {
+        throw new UserNotFoundError();
+      }
+
+      user.completeProfile({ fullName: input.fullName, identification: id.toString(), avatarFileId: input.avatarFileId });
       await repos.users.save(user);
 
       await repos.outbox.add({
@@ -50,16 +60,34 @@ export class CompleteProfileUseCase {
         occurredAt: new Date(),
       });
 
-      return {
-        id: user.id,
-        email: user.email,
-        fullName: user.fullName,
-        identification: {
-          type: id.type,
-          number: id.number,
-        },
-        status: user.status,
-      };
+      // Si el usuario no tiene organización, crear una automáticamente
+      const memberships = await repos.memberships.listActiveByUser(input.userId);
+      if (memberships.length === 0) {
+        const org = Organization.create({});
+        await repos.organizations.save(org);
+
+        await this.seedOrgRoles.seed(
+          { organizationId: org.id, countryCode: null, name: null, founderUserId: user.id },
+          repos,
+        );
+
+        return { credential, orgId: org.id, avatarFileId: user.avatarFileId };
+      }
+
+      return { credential, orgId: memberships[0].organizationId, avatarFileId: user.avatarFileId };
+    });
+
+    return issueSession({
+      credential,
+      tokenService: this.tokenService,
+      refreshTokens: this.refreshTokens,
+      authProvider: credential.hasPassword() ? 'password' : 'google',
+      accessContext: this.accessContext,
+      organizationId: orgId,
+      preferredOrgId: orgId,
+      userAgent: input.userAgent,
+      ip: input.ip,
+      avatarFileId,
     });
   }
 }

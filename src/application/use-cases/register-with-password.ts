@@ -1,5 +1,6 @@
 import { Credential } from '../../domain/entities';
 import { Organization, User } from '../../domain/rbac';
+import { RefreshTokenRepository } from '../../domain/repositories';
 import { Email } from '../../domain/value-objects';
 import { EmailAlreadyExistsError, IdentificationAlreadyExistsError } from '../../domain/errors';
 import { AccessContextResolver, PasswordHasher, TokenService, UnitOfWork } from '../ports';
@@ -21,13 +22,14 @@ export class RegisterWithPasswordUseCase {
     private readonly tokenService: TokenService,
     private readonly accessContext: AccessContextResolver,
     private readonly seedOrgRoles: SeedOrganizationRolesUseCase,
+    private readonly refreshTokens: RefreshTokenRepository,
   ) {}
 
   async execute(input: RegisterInput): Promise<SessionOutput> {
     const email = Email.create(input.email);
     const passwordHash = await this.hasher.hash(input.password);
 
-    return this.uow.execute(async (repos) => {
+    const { credential, orgId } = await this.uow.execute(async (repos) => {
       const existing = await repos.credentials.findByEmail(email.value);
       if (existing) {
         throw new EmailAlreadyExistsError();
@@ -69,17 +71,21 @@ export class RegisterWithPasswordUseCase {
         occurredAt: new Date(),
       });
 
-      return issueSession({
-        credential,
-        tokenService: this.tokenService,
-        refreshTokens: repos.refreshTokens,
-        authProvider: 'password',
-        accessContext: this.accessContext,
-        organizationId: org.id,
-        preferredOrgId: org.id,
-        userAgent: input.userAgent,
-        ip: input.ip,
-      });
+      return { credential, orgId: org.id };
+    });
+
+    // issueSession OUTSIDE la transacción para que accessContext.resolve()
+    // vea los role_permissions recién commiteados.
+    return issueSession({
+      credential,
+      tokenService: this.tokenService,
+      refreshTokens: this.refreshTokens,
+      authProvider: 'password',
+      accessContext: this.accessContext,
+      organizationId: orgId,
+      preferredOrgId: orgId,
+      userAgent: input.userAgent,
+      ip: input.ip,
     });
   }
 }

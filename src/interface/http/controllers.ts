@@ -68,7 +68,9 @@ export function logoutController(useCase: LogoutUseCase) {
 export function meController(useCase: GetMeUseCase) {
   return async (c: Context<{ Variables: AuthVariables }>) => {
     const userId = c.get('userId');
-    const result = await useCase.execute(userId);
+    const orgId = c.get('orgId');
+    const permissions = c.get('permissions');
+    const result = await useCase.execute(userId, orgId, permissions);
     return c.json(result, 200);
   };
 }
@@ -91,12 +93,16 @@ export function completeProfileController(useCase: CompleteProfileUseCase) {
       fullName: string;
       identificationType: string;
       identificationNumber: string;
+      avatarFileId?: string | null;
     };
     const result = await useCase.execute({
       userId: c.get('userId'),
       fullName: body.fullName,
       identificationType: body.identificationType,
       identificationNumber: body.identificationNumber,
+      avatarFileId: body.avatarFileId,
+      userAgent: c.req.header('User-Agent') ?? null,
+      ip: null,
     });
     return c.json(result, 200);
   };
@@ -127,8 +133,8 @@ export function assignRoleController(useCase: AssignRoleUseCase) {
     if (!orgId) throw new NoActiveOrganizationError();
     const userId = c.req.param('id') ?? '';
     if (!userId) return c.json({ code: 'MISSING_PARAM', message: 'userId es obligatorio.' }, 400);
-    const body = c.req.valid('json' as never) as { roleId: string };
-    await useCase.execute({ organizationId: orgId, userId, roleId: body.roleId });
+    const body = c.req.valid('json' as never) as { roleIds: string[] };
+    await useCase.execute({ organizationId: orgId, userId, roleIds: body.roleIds });
     return c.body(null, 204);
   };
 }

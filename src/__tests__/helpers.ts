@@ -203,6 +203,11 @@ export class InMemoryRoleRepository implements RoleRepository {
     this.rolePermissions.set(roleId, permissionIds);
   }
 
+  async getPermissionCodes(roleId: string): Promise<string[]> {
+    const ids = this.rolePermissions.get(roleId) ?? [];
+    return ids.map((_id, i) => `perm_${i}`);
+  }
+
   getPermissions(roleId: string): string[] {
     return this.rolePermissions.get(roleId) ?? [];
   }

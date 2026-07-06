@@ -33,7 +33,7 @@ describe('LoginWithGoogleUseCase', () => {
     googleVerifier.setProfile('valid-token', googleProfile);
     accessContext = new MockAccessContextResolver();
     seedOrg = new SeedOrganizationRolesUseCase(uow);
-    useCase = new LoginWithGoogleUseCase(googleVerifier, uow, tokenService, accessContext, seedOrg);
+    useCase = new LoginWithGoogleUseCase(googleVerifier, uow, tokenService, accessContext, seedOrg, uow.refreshTokens);
   });
 
   it('creates a new account when no existing link is found', async () => {

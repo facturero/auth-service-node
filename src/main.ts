@@ -49,7 +49,7 @@ async function main(): Promise<void> {
 
   const app = createApp({
     useCases: {
-      register: new RegisterWithPasswordUseCase(uow, hasher, tokenService, accessContext, seedOrgRoles),
+      register: new RegisterWithPasswordUseCase(uow, hasher, tokenService, accessContext, seedOrgRoles, repos.refreshTokens),
       login: new LoginWithPasswordUseCase(
         repos.credentials,
         repos.refreshTokens,
@@ -57,13 +57,13 @@ async function main(): Promise<void> {
         tokenService,
         accessContext,
       ),
-      google: new LoginWithGoogleUseCase(googleVerifier, uow, tokenService, accessContext, seedOrgRoles),
+      google: new LoginWithGoogleUseCase(googleVerifier, uow, tokenService, accessContext, seedOrgRoles, repos.refreshTokens),
       refresh: new RefreshTokenUseCase(uow, tokenService, accessContext),
       logout: new LogoutUseCase(repos.refreshTokens, tokenService),
-      getMe: new GetMeUseCase(repos.credentials),
+      getMe: new GetMeUseCase(repos.credentials, repos.users),
       switchOrg: new SwitchOrganizationUseCase(uow, tokenService, accessContext),
-      completeProfile: new CompleteProfileUseCase(uow),
-      listUsers: new ListUsersUseCase(repos.users),
+      completeProfile: new CompleteProfileUseCase(uow, tokenService, accessContext, seedOrgRoles, repos.refreshTokens),
+      listUsers: new ListUsersUseCase(repos.users, repos.userRoles, repos.roles),
       inviteUser: new InviteUserUseCase(uow),
       assignRole: new AssignRoleUseCase(uow),
       listRoles: new ListRolesUseCase(repos.roles),

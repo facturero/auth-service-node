@@ -1,17 +1,19 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { GetMeUseCase } from '../application/use-cases/get-me';
-import { InMemoryCredentialRepository } from './helpers';
+import { InMemoryCredentialRepository, InMemoryUserRepository } from './helpers';
 import { Email } from '../domain/value-objects';
 import { Credential } from '../domain/entities';
 import { UnauthorizedError } from '../domain/errors';
 
 describe('GetMeUseCase', () => {
   let credentials: InMemoryCredentialRepository;
+  let users: InMemoryUserRepository;
   let useCase: GetMeUseCase;
 
   beforeEach(() => {
     credentials = new InMemoryCredentialRepository();
-    useCase = new GetMeUseCase(credentials);
+    users = new InMemoryUserRepository();
+    useCase = new GetMeUseCase(credentials, users);
   });
 
   it('returns user data for active credential', async () => {
@@ -22,18 +24,20 @@ describe('GetMeUseCase', () => {
     });
     await credentials.save(credential);
 
-    const result = await useCase.execute(credential.userId);
+    const result = await useCase.execute(credential.userId, null, []);
 
     expect(result.id).toBe(credential.userId);
     expect(result.email).toBe('user@test.com');
     expect(result.emailVerified).toBe(false);
     expect(result.authProvider).toBe('password');
+    expect(result.orgId).toBeNull();
+    expect(result.permissions).toEqual([]);
     expect(result.createdAt).toBe(credential.createdAt.toISOString());
   });
 
   it('throws UnauthorizedError for non-existent user', async () => {
     await expect(
-      useCase.execute('nonexistent-user-id'),
+      useCase.execute('nonexistent-user-id', null, []),
     ).rejects.toThrow(UnauthorizedError);
   });
 
@@ -46,7 +50,7 @@ describe('GetMeUseCase', () => {
     await credentials.save(credential);
 
     await expect(
-      useCase.execute(credential.userId),
+      useCase.execute(credential.userId, null, []),
     ).rejects.toThrow(UnauthorizedError);
   });
 });

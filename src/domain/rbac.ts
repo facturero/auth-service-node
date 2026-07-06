@@ -11,6 +11,7 @@ export interface UserProps {
   email: string;
   identification: string | null;
   fullName: string | null;
+  avatarFileId: string | null;
   status: UserStatus;
   isPlatformAdmin: boolean;
   permissionsVersion: number;
@@ -28,6 +29,7 @@ export class User {
       email: params.email,
       identification: params.identification ?? null,
       fullName: params.fullName ?? null,
+      avatarFileId: null,
       status: 'active',
       isPlatformAdmin: false,
       permissionsVersion: 0,
@@ -44,6 +46,7 @@ export class User {
   get email(): string { return this.props.email; }
   get identification(): string | null { return this.props.identification; }
   get fullName(): string | null { return this.props.fullName; }
+  get avatarFileId(): string | null { return this.props.avatarFileId; }
   get status(): UserStatus { return this.props.status; }
   get isPlatformAdmin(): boolean { return this.props.isPlatformAdmin; }
   get permissionsVersion(): number { return this.props.permissionsVersion; }
@@ -59,9 +62,12 @@ export class User {
     this.props.updatedAt = new Date();
   }
 
-  completeProfile(params: { fullName: string; identification: string }): void {
+  completeProfile(params: { fullName: string; identification: string; avatarFileId?: string | null }): void {
     this.props.fullName = params.fullName;
     this.props.identification = params.identification;
+    if (params.avatarFileId !== undefined) {
+      this.props.avatarFileId = params.avatarFileId;
+    }
     this.props.updatedAt = new Date();
   }
 

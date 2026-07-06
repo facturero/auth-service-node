@@ -21,6 +21,7 @@ export async function issueSession(params: {
   ip?: string | null;
   accessContext?: AccessContextResolver;
   preferredOrgId?: string | null;
+  avatarFileId?: string | null;
 }): Promise<SessionOutput> {
   const { credential, tokenService, refreshTokens, authProvider, accessContext, preferredOrgId } = params;
 
@@ -69,6 +70,7 @@ export async function issueSession(params: {
       email: credential.email,
       emailVerified: credential.emailVerified,
       authProvider,
+      avatarFileId: params.avatarFileId ?? null,
     },
   };
 }

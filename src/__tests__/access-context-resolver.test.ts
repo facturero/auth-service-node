@@ -71,7 +71,7 @@ describe('SequelizeAccessContextResolver', () => {
 
   it('selects the first active membership when no preferredOrgId', async () => {
     const user = User.fromPersistence({
-      id: 'u1', email: 'u@t.com', identification: null, fullName: null, status: 'active',
+      id: 'u1', email: 'u@t.com', identification: null, fullName: null, avatarFileId: null, status: 'active',
       isPlatformAdmin: false, permissionsVersion: 3,
       createdAt: new Date(), updatedAt: new Date(),
     });
@@ -92,7 +92,7 @@ describe('SequelizeAccessContextResolver', () => {
 
   it('uses preferredOrgId when user is active member', async () => {
     const user = User.fromPersistence({
-      id: 'u2', email: 'u2@t.com', identification: null, fullName: null, status: 'active',
+      id: 'u2', email: 'u2@t.com', identification: null, fullName: null, avatarFileId: null, status: 'active',
       isPlatformAdmin: false, permissionsVersion: 0,
       createdAt: new Date(), updatedAt: new Date(),
     });
@@ -110,7 +110,7 @@ describe('SequelizeAccessContextResolver', () => {
 
   it('ignores preferredOrgId when membership is inactive', async () => {
     const user = User.fromPersistence({
-      id: 'u3', email: 'u3@t.com', identification: null, fullName: null, status: 'active',
+      id: 'u3', email: 'u3@t.com', identification: null, fullName: null, avatarFileId: null, status: 'active',
       isPlatformAdmin: false, permissionsVersion: 0,
       createdAt: new Date(), updatedAt: new Date(),
     });
@@ -131,7 +131,7 @@ describe('SequelizeAccessContextResolver', () => {
 
   it('returns pv even without org', async () => {
     const user = User.fromPersistence({
-      id: 'u-pv', email: 'u@t.com', identification: null, fullName: null, status: 'active',
+      id: 'u-pv', email: 'u@t.com', identification: null, fullName: null, avatarFileId: null, status: 'active',
       isPlatformAdmin: false, permissionsVersion: 7,
       createdAt: new Date(), updatedAt: new Date(),
     });

@@ -146,6 +146,7 @@ export class UserModel extends Model<
   declare email: string;
   declare identification: string | null;
   declare full_name: string | null;
+  declare avatar_file_id: string | null;
   declare status: 'active' | 'disabled';
   declare is_platform_admin: boolean;
   declare permissions_version: number;
@@ -159,6 +160,7 @@ UserModel.init(
     email: { type: DataTypes.STRING(255), allowNull: false, unique: true },
     identification: { type: DataTypes.STRING(20), allowNull: true, unique: true },
     full_name: { type: DataTypes.STRING(255), allowNull: true },
+    avatar_file_id: { type: DataTypes.CHAR(36), allowNull: true },
     status: { type: DataTypes.ENUM('active', 'disabled'), allowNull: false, defaultValue: 'active' },
     is_platform_admin: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     permissions_version: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },

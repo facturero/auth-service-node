@@ -42,6 +42,7 @@ export interface UserSummary {
   email: string;
   emailVerified: boolean;
   authProvider: AuthProvider;
+  avatarFileId: string | null;
 }
 
 export interface SessionOutput {
@@ -60,5 +61,10 @@ export interface MeOutput {
   email: string;
   emailVerified: boolean;
   authProvider: AuthProvider;
+  fullName: string | null;
+  identification: { type: string; number: string } | null;
+  orgId: string | null;
+  permissions: string[];
   createdAt: string; // ISO
+  avatarFileId: string | null;
 }

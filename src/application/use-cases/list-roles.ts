@@ -5,6 +5,7 @@ export interface RoleSummaryItem {
   name: string;
   description: string | null;
   isSystem: boolean;
+  permissions: string[];
 }
 
 export class ListRolesUseCase {
@@ -12,11 +13,17 @@ export class ListRolesUseCase {
 
   async execute(organizationId: string): Promise<RoleSummaryItem[]> {
     const roles = await this.roles.findByOrganization(organizationId);
-    return roles.map((r) => ({
-      id: r.id,
-      name: r.name,
-      description: r.description,
-      isSystem: r.isSystem,
-    }));
+
+    const items = await Promise.all(
+      roles.map(async (r) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        isSystem: r.isSystem,
+        permissions: await this.roles.getPermissionCodes(r.id),
+      })),
+    );
+
+    return items;
   }
 }

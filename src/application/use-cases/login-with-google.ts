@@ -1,5 +1,6 @@
 import { Credential, OAuthAccount } from '../../domain/entities';
 import { Organization, User } from '../../domain/rbac';
+import { RefreshTokenRepository } from '../../domain/repositories';
 import { Email } from '../../domain/value-objects';
 import { AccountDisabledError, IdentificationAlreadyExistsError } from '../../domain/errors';
 import { Repositories } from '../../domain/repositories';
@@ -22,13 +23,14 @@ export class LoginWithGoogleUseCase {
     private readonly tokenService: TokenService,
     private readonly accessContext: AccessContextResolver,
     private readonly seedOrgRoles: SeedOrganizationRolesUseCase,
+    private readonly refreshTokens: RefreshTokenRepository,
   ) {}
 
   async execute(input: GoogleAuthInput): Promise<SessionOutput> {
     const profile = await this.googleVerifier.verify(input.idToken);
     const email = Email.create(profile.email);
 
-    return this.uow.execute(async (repos) => {
+    const result = await this.uow.execute(async (repos) => {
       const linked = await repos.oauthAccounts.findByProvider('google', profile.sub);
       if (linked) {
         const credential = await repos.credentials.findById(linked.credentialId);
@@ -38,16 +40,12 @@ export class LoginWithGoogleUseCase {
         if (!credential.isActive()) {
           throw new AccountDisabledError();
         }
-        return issueSession({
+        return {
           credential,
-          tokenService: this.tokenService,
-          refreshTokens: repos.refreshTokens,
-          authProvider: 'google',
+          organizationId: undefined as string | undefined,
           isNewUser: false,
-          accessContext: this.accessContext,
-          userAgent: input.userAgent,
-          ip: input.ip,
-        });
+          needsOrg: false,
+        };
       }
 
       const existing = await repos.credentials.findByEmail(email.value);
@@ -81,19 +79,29 @@ export class LoginWithGoogleUseCase {
           occurredAt: new Date(),
         });
 
-        return issueSession({
+        return {
           credential: existing,
-          tokenService: this.tokenService,
-          refreshTokens: repos.refreshTokens,
-          authProvider: 'google',
+          organizationId: undefined as string | undefined,
           isNewUser: false,
-          accessContext: this.accessContext,
-          userAgent: input.userAgent,
-          ip: input.ip,
-        });
+          needsOrg: false,
+        };
       }
 
       return this.createLinkedAccount(repos, email, profile.sub, profile.emailVerified, input);
+    });
+
+    return issueSession({
+      credential: result.credential,
+      tokenService: this.tokenService,
+      refreshTokens: this.refreshTokens,
+      authProvider: 'google',
+      isNewUser: result.isNewUser,
+      needsOrg: result.needsOrg,
+      organizationId: result.organizationId,
+      accessContext: this.accessContext,
+      preferredOrgId: result.organizationId ?? null,
+      userAgent: input.userAgent,
+      ip: input.ip,
     });
   }
 
@@ -103,7 +111,12 @@ export class LoginWithGoogleUseCase {
     providerUserId: string,
     emailVerified: boolean,
     input: GoogleAuthInput,
-  ): Promise<SessionOutput> {
+  ): Promise<{
+    credential: Credential;
+    organizationId: string | undefined;
+    isNewUser: boolean;
+    needsOrg: boolean;
+  }> {
     const credential = Credential.createWithGoogle({ email, emailVerified });
 
     const hasIdentification = !!input.identification;
@@ -155,18 +168,6 @@ export class LoginWithGoogleUseCase {
       occurredAt: new Date(),
     });
 
-    return issueSession({
-      credential,
-      tokenService: this.tokenService,
-      refreshTokens: repos.refreshTokens,
-      authProvider: 'google',
-      isNewUser: true,
-      needsOrg: !hasIdentification,
-      organizationId,
-      accessContext: this.accessContext,
-      preferredOrgId: organizationId ?? null,
-      userAgent: input.userAgent,
-      ip: input.ip,
-    });
+    return { credential, organizationId, isNewUser: true, needsOrg: !hasIdentification };
   }
 }

@@ -48,7 +48,7 @@ export const inviteUserSchema = z.object({
 });
 
 export const assignRoleSchema = z.object({
-  roleId: z.string().uuid('roleId debe ser un UUID válido.'),
+  roleIds: z.array(z.string().uuid('roleId debe ser un UUID válido.')).min(1),
 });
 
 export const createRoleSchema = z.object({
@@ -67,6 +67,7 @@ export const completeProfileSchema = z.object({
     errorMap: () => ({ message: 'Tipo de identificación inválido. Debe ser cedula, ruc, passport o dni.' }),
   }),
   identificationNumber: z.string().min(1, 'El número de identificación es obligatorio.').max(30),
+  avatarFileId: z.string().optional(),
 });
 
 /** Envuelve zValidator('json', schema) traduciendo errores a ValidationError. */

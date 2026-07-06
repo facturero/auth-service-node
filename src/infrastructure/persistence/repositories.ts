@@ -187,6 +187,7 @@ function toUser(m: UserModel): User {
     email: m.email,
     identification: m.identification,
     fullName: m.full_name,
+    avatarFileId: m.avatar_file_id,
     status: m.status,
     isPlatformAdmin: m.is_platform_admin,
     permissionsVersion: m.permissions_version,
@@ -271,6 +272,7 @@ function userRepository(tx?: Transaction): UserRepository {
           email: p.email,
           identification: p.identification,
           full_name: p.fullName,
+          avatar_file_id: p.avatarFileId,
           status: p.status,
           is_platform_admin: p.isPlatformAdmin,
           permissions_version: p.permissionsVersion,
@@ -336,6 +338,15 @@ function roleRepository(tx?: Transaction): RoleRepository {
           { transaction: tx },
         );
       }
+    },
+    async getPermissionCodes(roleId) {
+      const rows = await sequelize.query<{ code: string }>(
+        `SELECT p.code FROM role_permissions rp
+          JOIN permissions p ON p.id = rp.permission_id
+         WHERE rp.role_id = :roleId`,
+        { replacements: { roleId }, type: QueryTypes.SELECT, transaction: tx },
+      );
+      return rows.map((r) => r.code);
     },
   };
 }

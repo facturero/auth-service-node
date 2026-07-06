@@ -1,26 +1,39 @@
 import { UnauthorizedError } from '../../domain/errors';
-import { CredentialRepository } from '../../domain/repositories';
+import { CredentialRepository, UserRepository } from '../../domain/repositories';
 import { MeOutput } from '../dtos';
 
-/**
- * Devuelve los datos del usuario autenticado a partir de su user_id
- * (extraído del access token por el middleware).
- */
 export class GetMeUseCase {
-  constructor(private readonly credentials: CredentialRepository) {}
+  constructor(
+    private readonly credentials: CredentialRepository,
+    private readonly users: UserRepository,
+  ) {}
 
-  async execute(userId: string): Promise<MeOutput> {
+  async execute(userId: string, orgId: string | null, permissions: string[]): Promise<MeOutput> {
     const credential = await this.credentials.findByUserId(userId);
     if (!credential || !credential.isActive()) {
       throw new UnauthorizedError();
     }
+
+    const user = await this.users.findById(userId);
+
+    const identification = (() => {
+      if (!user?.identification) return null;
+      const idx = user.identification.indexOf(':');
+      if (idx === -1) return { type: 'cedula', number: user.identification };
+      return { type: user.identification.slice(0, idx), number: user.identification.slice(idx + 1) };
+    })();
 
     return {
       id: credential.userId,
       email: credential.email,
       emailVerified: credential.emailVerified,
       authProvider: credential.hasPassword() ? 'password' : 'google',
+      fullName: user?.fullName ?? null,
+      identification,
+      orgId,
+      permissions,
       createdAt: credential.createdAt.toISOString(),
+      avatarFileId: user?.avatarFileId ?? null,
     };
   }
 }
