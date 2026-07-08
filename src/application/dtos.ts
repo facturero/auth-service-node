@@ -64,6 +64,7 @@ export interface MeOutput {
   fullName: string | null;
   identification: { type: string; number: string } | null;
   orgId: string | null;
+  orgName: string | null;
   permissions: string[];
   createdAt: string; // ISO
   avatarFileId: string | null;

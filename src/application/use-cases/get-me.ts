@@ -1,11 +1,12 @@
 import { UnauthorizedError } from '../../domain/errors';
-import { CredentialRepository, UserRepository } from '../../domain/repositories';
+import { CredentialRepository, UserRepository, OrganizationRepository } from '../../domain/repositories';
 import { MeOutput } from '../dtos';
 
 export class GetMeUseCase {
   constructor(
     private readonly credentials: CredentialRepository,
     private readonly users: UserRepository,
+    private readonly organizations: OrganizationRepository,
   ) {}
 
   async execute(userId: string, orgId: string | null, permissions: string[]): Promise<MeOutput> {
@@ -15,6 +16,10 @@ export class GetMeUseCase {
     }
 
     const user = await this.users.findById(userId);
+
+    const orgName = orgId
+      ? (await this.organizations.findById(orgId))?.name ?? null
+      : null;
 
     const identification = (() => {
       if (!user?.identification) return null;
@@ -31,6 +36,7 @@ export class GetMeUseCase {
       fullName: user?.fullName ?? null,
       identification,
       orgId,
+      orgName,
       permissions,
       createdAt: credential.createdAt.toISOString(),
       avatarFileId: user?.avatarFileId ?? null,

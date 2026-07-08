@@ -1,6 +1,6 @@
 import { Repositories } from '../../domain/repositories';
 import { UnitOfWork } from '../ports';
-import { RoleNotFoundError } from '../../domain/errors';
+import { RoleNotFoundError, CannotModifySystemRoleError } from '../../domain/errors';
 
 export interface UpdateRolePermissionsInput {
   organizationId: string;
@@ -15,6 +15,7 @@ export class UpdateRolePermissionsUseCase {
     await this.uow.execute(async (repos: Repositories) => {
       const role = await repos.roles.findById(input.roleId);
       if (!role) throw new RoleNotFoundError();
+      if (role.isSystem) throw new CannotModifySystemRoleError();
 
       const ids = await repos.permissions.findIdsByCodes(input.permissionCodes);
       await repos.roles.setPermissions(input.roleId, ids);

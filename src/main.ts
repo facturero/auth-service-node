@@ -19,13 +19,16 @@ import { CompleteProfileUseCase } from './application/use-cases/complete-profile
 import { ListUsersUseCase } from './application/use-cases/list-users';
 import { InviteUserUseCase } from './application/use-cases/invite-user';
 import { AssignRoleUseCase } from './application/use-cases/assign-role';
+import { DisableUserUseCase } from './application/use-cases/disable-user';
 import { SeedOrganizationRolesUseCase } from './application/use-cases/seed-organization-roles';
 import { ListRolesUseCase } from './application/use-cases/list-roles';
 import { CreateRoleUseCase } from './application/use-cases/create-role';
 import { UpdateRolePermissionsUseCase } from './application/use-cases/update-role-permissions';
 import { ListPermissionsUseCase } from './application/use-cases/list-permissions';
+import { AcceptInviteUseCase } from './application/use-cases/accept-invite';
 import { OutboxRelay } from './infrastructure/messaging/relay';
 import { OrgUpdatedConsumer } from './infrastructure/messaging/consumer';
+import { SimpleInviteTokenService } from './infrastructure/security/invite-token-service';
 import { createApp } from './interface/http/app';
 
 /**
@@ -44,8 +47,9 @@ async function main(): Promise<void> {
   const googleVerifier = new GoogleIdTokenVerifierImpl(config.GOOGLE_CLIENT_ID);
   const accessContext = new SequelizeAccessContextResolver(repos.users, repos.memberships, sequelizeAccessQuery);
 
-  // Casos de uso
+  // Servicios
   const seedOrgRoles = new SeedOrganizationRolesUseCase(uow);
+  const inviteTokenService = new SimpleInviteTokenService(config.FRONTEND_URL);
 
   const app = createApp({
     useCases: {
@@ -60,16 +64,18 @@ async function main(): Promise<void> {
       google: new LoginWithGoogleUseCase(googleVerifier, uow, tokenService, accessContext, seedOrgRoles, repos.refreshTokens),
       refresh: new RefreshTokenUseCase(uow, tokenService, accessContext),
       logout: new LogoutUseCase(repos.refreshTokens, tokenService),
-      getMe: new GetMeUseCase(repos.credentials, repos.users),
+      getMe: new GetMeUseCase(repos.credentials, repos.users, repos.organizations),
       switchOrg: new SwitchOrganizationUseCase(uow, tokenService, accessContext),
       completeProfile: new CompleteProfileUseCase(uow, tokenService, accessContext, seedOrgRoles, repos.refreshTokens),
-      listUsers: new ListUsersUseCase(repos.users, repos.userRoles, repos.roles),
-      inviteUser: new InviteUserUseCase(uow),
+      listUsers: new ListUsersUseCase(repos.users, repos.userRoles, repos.roles, repos.organizations),
+      inviteUser: new InviteUserUseCase(uow, inviteTokenService),
       assignRole: new AssignRoleUseCase(uow),
+      disableUser: new DisableUserUseCase(uow),
       listRoles: new ListRolesUseCase(repos.roles),
       createRole: new CreateRoleUseCase(uow),
       updateRolePermissions: new UpdateRolePermissionsUseCase(uow),
       listPermissions: new ListPermissionsUseCase(repos.permissions),
+      acceptInvite: new AcceptInviteUseCase(uow, hasher, tokenService, accessContext, repos.refreshTokens),
     },
     tokenService,
     accessContext,

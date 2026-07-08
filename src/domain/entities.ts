@@ -42,6 +42,27 @@ export class Credential {
     });
   }
 
+  /** Crea una cuenta con un userId existente (ej. invitación). */
+  static create(params: {
+    userId: string;
+    email: string;
+    passwordHash: string;
+    authProvider: 'password' | 'google';
+    emailVerified: boolean;
+  }): Credential {
+    const now = new Date();
+    return new Credential({
+      id: randomUUID(),
+      userId: params.userId,
+      email: params.email,
+      passwordHash: params.passwordHash,
+      emailVerified: params.emailVerified,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
   /** Crea una cuenta a partir de Google (sin contraseña). */
   static createWithGoogle(params: { email: Email; emailVerified: boolean }): Credential {
     const now = new Date();

@@ -199,7 +199,9 @@ function toUser(m: UserModel): User {
 function toOrganization(m: OrganizationModel): Organization {
   return Organization.fromPersistence({
     id: m.id,
+    name: m.name,
     countryCode: m.country_code,
+    ownerId: m.owner_id,
     createdAt: m.created_at,
     updatedAt: m.updated_at,
   });
@@ -422,6 +424,12 @@ function userRoleRepository(tx?: Transaction): UserRoleRepository {
         transaction: tx,
       });
     },
+    async removeAllByUser(userId, organizationId) {
+      await UserRoleModel.destroy({
+        where: { user_id: userId, organization_id: organizationId },
+        transaction: tx,
+      });
+    },
     async listByUserAndOrg(userId, organizationId) {
       const rows = await UserRoleModel.findAll({
         where: { user_id: userId, organization_id: organizationId },
@@ -474,7 +482,9 @@ function organizationRepository(tx?: Transaction): OrganizationRepository {
       await OrganizationModel.upsert(
         {
           id: p.id,
+          name: p.name,
           country_code: p.countryCode,
+          owner_id: p.ownerId,
           created_at: p.createdAt,
           updated_at: new Date(),
         },

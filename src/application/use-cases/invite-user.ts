@@ -1,16 +1,19 @@
 import { Repositories } from '../../domain/repositories';
 import { User, Membership, UserRole } from '../../domain/rbac';
-import { UnitOfWork } from '../ports';
-import { RoleNotFoundError } from '../../domain/errors';
+import { UnitOfWork, InviteTokenService } from '../ports';
+import { RoleNotFoundError, UserAlreadyInvitedError } from '../../domain/errors';
 
 export interface InviteUserInput {
   organizationId: string;
   email: string;
-  roleId: string;
+  roleIds: string[];
 }
 
 export class InviteUserUseCase {
-  constructor(private readonly uow: UnitOfWork) {}
+  constructor(
+    private readonly uow: UnitOfWork,
+    private readonly inviteTokenService: InviteTokenService,
+  ) {}
 
   async execute(input: InviteUserInput): Promise<{ userId: string }> {
     return this.uow.execute(async (repos: Repositories) => {
@@ -28,33 +31,62 @@ export class InviteUserUseCase {
         });
       }
 
-      const role = await repos.roles.findById(input.roleId);
-      if (!role) throw new RoleNotFoundError();
+      const existingMembership = await repos.memberships.find(user.id, input.organizationId);
+      if (existingMembership) throw new UserAlreadyInvitedError();
 
-      let membership = await repos.memberships.find(user.id, input.organizationId);
-      if (!membership) {
-        membership = Membership.create({
-          userId: user.id,
-          organizationId: input.organizationId,
-          status: 'invited',
-        });
-        await repos.memberships.save(membership);
-      }
-
-      const ur = UserRole.assign({
+      const membership = Membership.create({
         userId: user.id,
         organizationId: input.organizationId,
-        roleId: input.roleId,
+        status: 'invited',
       });
-      await repos.userRoles.assign(ur);
+      await repos.memberships.save(membership);
+
+      const existingRoles = await repos.userRoles.listByUserAndOrg(user.id, input.organizationId);
+      const existingRoleIds = new Set(existingRoles.map((ur) => ur.roleId));
+
+      for (const roleId of input.roleIds) {
+        if (existingRoleIds.has(roleId)) continue;
+
+        const role = await repos.roles.findById(roleId);
+        if (!role) throw new RoleNotFoundError();
+
+        const ur = UserRole.assign({
+          userId: user.id,
+          organizationId: input.organizationId,
+          roleId,
+        });
+        await repos.userRoles.assign(ur);
+
+        await repos.outbox.add({
+          type: 'identity.user.role_assigned',
+          aggregateType: 'user',
+          aggregateId: user.id,
+          payload: { userId: user.id, organizationId: input.organizationId, roleId },
+          occurredAt: new Date(),
+        });
+      }
 
       await repos.users.incrementPermissionsVersion(user.id);
 
+      const org = await repos.organizations.findById(input.organizationId);
+      const organizationName = org?.name ?? 'su organización';
+      const inviteUrl = this.inviteTokenService.generateInviteToken({
+        userId: user.id,
+        email: user.email,
+        organizationId: input.organizationId,
+      });
+
       await repos.outbox.add({
-        type: 'identity.user.role_assigned',
+        type: 'identity.user.invited',
         aggregateType: 'user',
         aggregateId: user.id,
-        payload: { userId: user.id, organizationId: input.organizationId, roleId: input.roleId },
+        payload: {
+          userId: user.id,
+          email: user.email,
+          organizationId: input.organizationId,
+          organizationName,
+          inviteUrl,
+        },
         occurredAt: new Date(),
       });
 

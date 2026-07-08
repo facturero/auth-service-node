@@ -134,3 +134,33 @@ export class LastAdminRemovalError extends AppError {
   readonly httpStatus = 409;
   constructor(message = 'No se puede eliminar el último administrador de la organización.') { super(message); }
 }
+
+export class UserAlreadyInvitedError extends AppError {
+  readonly code = 'USER_ALREADY_INVITED';
+  readonly httpStatus = 409;
+  constructor(message = 'El usuario ya ha sido invitado a la organización.') { super(message); }
+}
+
+export class InvalidInviteTokenError extends AppError {
+  readonly code = 'INVALID_INVITE_TOKEN';
+  readonly httpStatus = 400;
+  constructor(message = 'El enlace de invitación no es válido.') { super(message); }
+}
+
+export class MembershipNotInvitedError extends AppError {
+  readonly code = 'MEMBERSHIP_NOT_INVITED';
+  readonly httpStatus = 409;
+  constructor(message = 'La membresía no está en estado invitado.') { super(message); }
+}
+
+export class CredentialAlreadyExistsError extends AppError {
+  readonly code = 'CREDENTIAL_ALREADY_EXISTS';
+  readonly httpStatus = 409;
+  constructor(message = 'El usuario ya tiene una cuenta registrada.') { super(message); }
+}
+
+export class CannotModifySystemRoleError extends AppError {
+  readonly code = 'CANNOT_MODIFY_SYSTEM_ROLE';
+  readonly httpStatus = 403;
+  constructor(message = 'Los roles de sistema no pueden ser modificados.') { super(message); }
+}

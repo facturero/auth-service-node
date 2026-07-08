@@ -270,6 +270,14 @@ export class InMemoryUserRoleRepository implements UserRoleRepository {
     }
   }
 
+  async removeAllByUser(userId: string, organizationId: string): Promise<void> {
+    for (const [k, v] of this.store) {
+      if (v.userId === userId && v.organizationId === organizationId) {
+        this.store.delete(k);
+      }
+    }
+  }
+
   async listByUserAndOrg(userId: string, organizationId: string): Promise<UserRole[]> {
     return Array.from(this.store.values())
       .filter((ur) => ur.userId === userId && ur.organizationId === organizationId);

@@ -175,7 +175,9 @@ export class OrganizationModel extends Model<
   InferCreationAttributes<OrganizationModel>
 > {
   declare id: string;
+  declare name: string | null;
   declare country_code: string | null;
+  declare owner_id: string | null;
   declare created_at: Date;
   declare updated_at: Date;
 }
@@ -183,7 +185,9 @@ export class OrganizationModel extends Model<
 OrganizationModel.init(
   {
     id: { type: DataTypes.CHAR(36), primaryKey: true },
+    name: { type: DataTypes.STRING(255), allowNull: true },
     country_code: { type: DataTypes.STRING(2), allowNull: true },
+    owner_id: { type: DataTypes.CHAR(36), allowNull: true },
     created_at: DataTypes.DATE,
     updated_at: DataTypes.DATE,
   },

@@ -37,6 +37,8 @@ const schema = z.object({
 
   CORS_ORIGIN: z.string().default('*'),
 
+  FRONTEND_URL: z.string().default('http://localhost:5173'),
+
   RABBITMQ_URL: z.string().optional(),
 });
 
@@ -92,6 +94,7 @@ export interface AppConfig {
   JWT_AUDIENCE: string;
   GOOGLE_CLIENT_ID: string;
   CORS_ORIGIN: string;
+  FRONTEND_URL: string;
   RABBITMQ_URL?: string;
 }
 
@@ -111,5 +114,6 @@ export const config: AppConfig = {
   JWT_AUDIENCE: env.JWT_AUDIENCE,
   GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID,
   CORS_ORIGIN: env.CORS_ORIGIN,
+  FRONTEND_URL: env.FRONTEND_URL,
   RABBITMQ_URL: env.RABBITMQ_URL,
 };

@@ -12,12 +12,14 @@ import { SwitchOrganizationUseCase } from '../application/use-cases/switch-organ
 import { ListUsersUseCase } from '../application/use-cases/list-users';
 import { InviteUserUseCase } from '../application/use-cases/invite-user';
 import { AssignRoleUseCase } from '../application/use-cases/assign-role';
+import { DisableUserUseCase } from '../application/use-cases/disable-user';
 import { ListRolesUseCase } from '../application/use-cases/list-roles';
 import { CreateRoleUseCase } from '../application/use-cases/create-role';
 import { UpdateRolePermissionsUseCase } from '../application/use-cases/update-role-permissions';
 import { ListPermissionsUseCase } from '../application/use-cases/list-permissions';
 import { CompleteProfileUseCase } from '../application/use-cases/complete-profile';
 import { SeedOrganizationRolesUseCase } from '../application/use-cases/seed-organization-roles';
+import { AcceptInviteUseCase } from '../application/use-cases/accept-invite';
 import {
   AccessTokenClaims,
   GeneratedRefreshToken,
@@ -33,6 +35,7 @@ import {
   InMemoryPermissionRepository,
   InMemoryMembershipRepository,
   InMemoryUserRoleRepository,
+  InMemoryOrganizationRepository,
   MockAccessContextResolver,
   MockPasswordHasher,
   MockGoogleVerifier,
@@ -127,6 +130,7 @@ function buildTestApp() {
   const permissions = new InMemoryPermissionRepository();
   const memberships = new InMemoryMembershipRepository();
   const userRoles = new InMemoryUserRoleRepository();
+  const organizations = new InMemoryOrganizationRepository();
   const uow = new InMemoryUnitOfWork({ credentials, refreshTokens, users, roles, permissions, memberships, userRoles });
   const hasher = new MockPasswordHasher();
   const tokenService = new RbacMockTokenService();
@@ -141,16 +145,18 @@ function buildTestApp() {
       google: new LoginWithGoogleUseCase(googleVerifier, uow, tokenService, accessContext, seedOrg, refreshTokens),
       refresh: new RefreshTokenUseCase(uow, tokenService, accessContext),
       logout: new LogoutUseCase(refreshTokens, tokenService),
-      getMe: new GetMeUseCase(credentials, users),
+      getMe: new GetMeUseCase(credentials, users, organizations),
       switchOrg: new SwitchOrganizationUseCase(uow, tokenService, accessContext),
-      listUsers: new ListUsersUseCase(users, userRoles, roles),
-      inviteUser: new InviteUserUseCase(uow),
+      listUsers: new ListUsersUseCase(users, userRoles, roles, organizations),
+      inviteUser: new InviteUserUseCase(uow, { generateInviteToken: () => 'http://localhost:5173/accept-invite?token=mock' }),
       assignRole: new AssignRoleUseCase(uow),
+      disableUser: new DisableUserUseCase(uow),
       listRoles: new ListRolesUseCase(roles),
       createRole: new CreateRoleUseCase(uow),
       updateRolePermissions: new UpdateRolePermissionsUseCase(uow),
       completeProfile: new CompleteProfileUseCase(uow, tokenService, accessContext, seedOrg, refreshTokens),
       listPermissions: new ListPermissionsUseCase(permissions),
+      acceptInvite: new AcceptInviteUseCase(uow, hasher, tokenService, accessContext, refreshTokens),
     },
     tokenService,
     accessContext,

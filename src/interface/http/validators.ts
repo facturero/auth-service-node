@@ -44,7 +44,7 @@ export const switchOrgSchema = z.object({
 
 export const inviteUserSchema = z.object({
   email: z.string().email('Email inválido.'),
-  roleId: z.string().uuid('roleId debe ser un UUID válido.'),
+  roleIds: z.array(z.string().uuid('roleId debe ser un UUID válido.')).min(1),
 });
 
 export const assignRoleSchema = z.object({
@@ -59,6 +59,14 @@ export const createRoleSchema = z.object({
 
 export const updateRolePermissionsSchema = z.object({
   permissions: z.array(z.string()).min(1, 'Debe especificar al menos un permiso.'),
+});
+
+export const acceptInviteSchema = z.object({
+  token: z.string().min(1, 'El token es obligatorio.'),
+  password: z
+    .string()
+    .min(8, 'Debe tener al menos 8 caracteres.')
+    .max(128, 'Máximo 128 caracteres.'),
 });
 
 export const completeProfileSchema = z.object({

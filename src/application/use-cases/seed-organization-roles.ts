@@ -19,6 +19,13 @@ export class SeedOrganizationRolesUseCase {
 
   /** Lógica compartida para reutilizar dentro de otra transacción. */
   async seed(input: SeedOrganizationRolesInput, repos: Repositories): Promise<void> {
+    const org = await repos.organizations.findById(input.organizationId);
+    if (org) {
+      if (input.name) org.setName(input.name);
+      org.setOwner(input.founderUserId);
+      await repos.organizations.save(org);
+    }
+
     const templates = await repos.roles.findTemplates();
 
     for (const tmpl of templates) {

@@ -61,6 +61,16 @@ export interface GoogleIdTokenVerifier {
   verify(idToken: string): Promise<GoogleProfile>;
 }
 
+export interface InviteTokenPayload {
+  userId: string;
+  email: string;
+  organizationId: string;
+}
+
+export interface InviteTokenService {
+  generateInviteToken(payload: InviteTokenPayload): string;
+}
+
 /**
  * Unidad de trabajo: ejecuta `work` dentro de una transacción y le entrega
  * un conjunto de repositorios ligados a ella. Si `work` lanza, se hace rollback.

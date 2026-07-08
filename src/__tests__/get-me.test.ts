@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { GetMeUseCase } from '../application/use-cases/get-me';
-import { InMemoryCredentialRepository, InMemoryUserRepository } from './helpers';
+import { InMemoryCredentialRepository, InMemoryOrganizationRepository, InMemoryUserRepository } from './helpers';
 import { Email } from '../domain/value-objects';
 import { Credential } from '../domain/entities';
 import { UnauthorizedError } from '../domain/errors';
@@ -8,12 +8,14 @@ import { UnauthorizedError } from '../domain/errors';
 describe('GetMeUseCase', () => {
   let credentials: InMemoryCredentialRepository;
   let users: InMemoryUserRepository;
+  let organizations: InMemoryOrganizationRepository;
   let useCase: GetMeUseCase;
 
   beforeEach(() => {
     credentials = new InMemoryCredentialRepository();
     users = new InMemoryUserRepository();
-    useCase = new GetMeUseCase(credentials, users);
+    organizations = new InMemoryOrganizationRepository();
+    useCase = new GetMeUseCase(credentials, users, organizations);
   });
 
   it('returns user data for active credential', async () => {

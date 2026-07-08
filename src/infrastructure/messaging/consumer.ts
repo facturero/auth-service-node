@@ -38,13 +38,10 @@ export class OrgUpdatedConsumer {
   private async handle(msg: ConsumeMessage): Promise<void> {
     if (!this.channel) return;
 
-    const payload: {
-      organizationId: string;
-      countryCode?: string | null;
-      name?: string | null;
-    } = JSON.parse(msg.content.toString());
+    const payload: Record<string, unknown> = JSON.parse(msg.content.toString());
+    const organizationId = payload.organizationId as string | undefined;
 
-    if (!payload.organizationId) {
+    if (!organizationId) {
       this.channel.nack(msg, false, false);
       return;
     }
@@ -52,19 +49,30 @@ export class OrgUpdatedConsumer {
     const repos = buildRepositories();
     const orgRepo: OrganizationRepository = repos.organizations;
 
-    let org = await orgRepo.findById(payload.organizationId);
+    let org = await orgRepo.findById(organizationId);
     if (org) {
-      org = Organization.fromPersistence({
-        ...org.toPersistence(),
-        countryCode: payload.countryCode ?? org.countryCode,
-      });
+      const updates: Record<string, unknown> = {};
+      const countryCode = (payload.countryCode as string | null) ?? org.countryCode;
+      const name = (payload.legalName as string | null) ?? (payload.name as string | null) ?? org.name;
+
+      if (countryCode !== org.countryCode) updates.countryCode = countryCode;
+      if (name !== org.name) updates.name = name;
+
+      if (Object.keys(updates).length > 0) {
+        org = Organization.fromPersistence({
+          ...org.toPersistence(),
+          ...updates,
+        });
+        await orgRepo.save(org);
+      }
     } else {
       org = Organization.create({
-        id: payload.organizationId,
-        countryCode: payload.countryCode ?? null,
+        id: organizationId,
+        name: (payload.legalName ?? payload.name) as string | null ?? null,
+        countryCode: payload.countryCode as string | null ?? null,
       });
+      await orgRepo.save(org);
     }
-    await orgRepo.save(org);
 
     this.channel.ack(msg);
   }

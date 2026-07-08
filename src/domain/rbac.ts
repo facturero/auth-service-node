@@ -62,6 +62,11 @@ export class User {
     this.props.updatedAt = new Date();
   }
 
+  activate(): void {
+    this.props.status = 'active';
+    this.props.updatedAt = new Date();
+  }
+
   completeProfile(params: { fullName: string; identification: string; avatarFileId?: string | null }): void {
     this.props.fullName = params.fullName;
     this.props.identification = params.identification;
@@ -86,7 +91,9 @@ export class User {
 // ---------------------------------------------------------------------------
 export interface OrganizationProps {
   id: string;
+  name: string | null;
   countryCode: string | null;
+  ownerId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -94,17 +101,13 @@ export interface OrganizationProps {
 export class Organization {
   private constructor(private props: OrganizationProps) {}
 
-  /**
-   * Read-model MÍNIMO de la organización dentro de auth: solo lo que auth
-   * necesita para firmar el token (id + country_code). El nombre, el RUC, los
-   * establecimientos y demás datos de negocio los posee organization-service.
-   * El `country_code` se actualiza al consumir `organization.org.updated`.
-   */
-  static create(params: { id?: string; countryCode?: string | null }): Organization {
+  static create(params: { id?: string; name?: string | null; countryCode?: string | null; ownerId?: string | null }): Organization {
     const now = new Date();
     return new Organization({
       id: params.id ?? randomUUID(),
+      name: params.name ?? null,
       countryCode: params.countryCode ?? null,
+      ownerId: params.ownerId ?? null,
       createdAt: now,
       updatedAt: now,
     });
@@ -115,9 +118,21 @@ export class Organization {
   }
 
   get id(): string { return this.props.id; }
+  get name(): string | null { return this.props.name; }
   get countryCode(): string | null { return this.props.countryCode; }
+  get ownerId(): string | null { return this.props.ownerId; }
   get createdAt(): Date { return this.props.createdAt; }
   get updatedAt(): Date { return this.props.updatedAt; }
+
+  setName(name: string): void {
+    this.props.name = name;
+    this.props.updatedAt = new Date();
+  }
+
+  setOwner(userId: string): void {
+    this.props.ownerId = userId;
+    this.props.updatedAt = new Date();
+  }
 
   toPersistence(): OrganizationProps {
     return { ...this.props };
@@ -249,6 +264,16 @@ export class Membership {
 
   isActive(): boolean {
     return this.props.status === 'active';
+  }
+
+  disable(): void {
+    this.props.status = 'disabled';
+    this.props.updatedAt = new Date();
+  }
+
+  activate(): void {
+    this.props.status = 'active';
+    this.props.updatedAt = new Date();
   }
 
   toPersistence(): MembershipProps {

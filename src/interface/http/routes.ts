@@ -11,11 +11,14 @@ import { CompleteProfileUseCase } from '../../application/use-cases/complete-pro
 import { ListUsersUseCase } from '../../application/use-cases/list-users';
 import { InviteUserUseCase } from '../../application/use-cases/invite-user';
 import { AssignRoleUseCase } from '../../application/use-cases/assign-role';
+import { DisableUserUseCase } from '../../application/use-cases/disable-user';
 import { ListRolesUseCase } from '../../application/use-cases/list-roles';
 import { CreateRoleUseCase } from '../../application/use-cases/create-role';
 import { UpdateRolePermissionsUseCase } from '../../application/use-cases/update-role-permissions';
 import { ListPermissionsUseCase } from '../../application/use-cases/list-permissions';
+import { AcceptInviteUseCase } from '../../application/use-cases/accept-invite';
 import {
+  acceptInviteSchema,
   assignRoleSchema,
   completeProfileSchema,
   createRoleSchema,
@@ -30,9 +33,11 @@ import {
   validateJson,
 } from './validators';
 import {
+  acceptInviteController,
   assignRoleController,
   completeProfileController,
   createRoleController,
+  disableUserController,
   googleController,
   inviteUserController,
   listPermissionsController,
@@ -62,10 +67,12 @@ export interface AppDependencies {
     listUsers: ListUsersUseCase;
     inviteUser: InviteUserUseCase;
     assignRole: AssignRoleUseCase;
+    disableUser: DisableUserUseCase;
     listRoles: ListRolesUseCase;
     createRole: CreateRoleUseCase;
     updateRolePermissions: UpdateRolePermissionsUseCase;
     listPermissions: ListPermissionsUseCase;
+    acceptInvite: AcceptInviteUseCase;
   };
   tokenService: TokenService;
   accessContext: AccessContextResolver;
@@ -93,6 +100,8 @@ export function authRoutes(deps: AppDependencies): Hono<{ Variables: AuthVariabl
   r.post('/switch-organization', auth, validateJson(switchOrgSchema), switchOrgController(useCases.switchOrg));
   r.post('/complete-profile', auth, validateJson(completeProfileSchema), completeProfileController(useCases.completeProfile));
 
+  r.post('/accept-invite', validateJson(acceptInviteSchema), acceptInviteController(useCases.acceptInvite));
+
   return r;
 }
 
@@ -104,6 +113,7 @@ export function adminRoutes(deps: AppDependencies): Hono<{ Variables: AuthVariab
   r.get('/users', auth, requirePermission('user:read'), listUsersController(useCases.listUsers));
   r.post('/users/invite', auth, requirePermission('user:invite'), validateJson(inviteUserSchema), inviteUserController(useCases.inviteUser));
   r.post('/users/:id/roles', auth, requirePermission('user:assign_role'), validateJson(assignRoleSchema), assignRoleController(useCases.assignRole));
+  r.post('/users/:id/disable', auth, requirePermission('user:update'), disableUserController(useCases.disableUser));
 
   r.get('/roles', auth, requirePermission('user:read'), listRolesController(useCases.listRoles));
   r.post('/roles', auth, requirePermission('user:assign_role'), validateJson(createRoleSchema), createRoleController(useCases.createRole));

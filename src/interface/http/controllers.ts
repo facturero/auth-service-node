@@ -13,7 +13,9 @@ import { AssignRoleUseCase } from '../../application/use-cases/assign-role';
 import { ListRolesUseCase } from '../../application/use-cases/list-roles';
 import { CreateRoleUseCase } from '../../application/use-cases/create-role';
 import { UpdateRolePermissionsUseCase } from '../../application/use-cases/update-role-permissions';
+import { DisableUserUseCase } from '../../application/use-cases/disable-user';
 import { ListPermissionsUseCase } from '../../application/use-cases/list-permissions';
+import { AcceptInviteUseCase } from '../../application/use-cases/accept-invite';
 import { NoActiveOrganizationError } from '../../domain/errors';
 import { AuthVariables } from './middlewares';
 
@@ -108,6 +110,14 @@ export function completeProfileController(useCase: CompleteProfileUseCase) {
   };
 }
 
+export function acceptInviteController(useCase: AcceptInviteUseCase) {
+  return async (c: Context) => {
+    const body = c.req.valid('json' as never) as { token: string; password: string };
+    const result = await useCase.execute({ ...body, ...clientMeta(c) });
+    return c.json(result, 201);
+  };
+}
+
 export function listUsersController(useCase: ListUsersUseCase) {
   return async (c: Context<{ Variables: AuthVariables }>) => {
     const orgId = c.get('orgId');
@@ -121,8 +131,8 @@ export function inviteUserController(useCase: InviteUserUseCase) {
   return async (c: Context<{ Variables: AuthVariables }>) => {
     const orgId = c.get('orgId');
     if (!orgId) throw new NoActiveOrganizationError();
-    const body = c.req.valid('json' as never) as { email: string; roleId: string };
-    const result = await useCase.execute({ organizationId: orgId, ...body });
+    const body = c.req.valid('json' as never) as { email: string; roleIds: string[] };
+    const result = await useCase.execute({ organizationId: orgId, email: body.email, roleIds: body.roleIds });
     return c.json(result, 201);
   };
 }
@@ -135,6 +145,17 @@ export function assignRoleController(useCase: AssignRoleUseCase) {
     if (!userId) return c.json({ code: 'MISSING_PARAM', message: 'userId es obligatorio.' }, 400);
     const body = c.req.valid('json' as never) as { roleIds: string[] };
     await useCase.execute({ organizationId: orgId, userId, roleIds: body.roleIds });
+    return c.body(null, 204);
+  };
+}
+
+export function disableUserController(useCase: DisableUserUseCase) {
+  return async (c: Context<{ Variables: AuthVariables }>) => {
+    const orgId = c.get('orgId');
+    if (!orgId) throw new NoActiveOrganizationError();
+    const userId = c.req.param('id') ?? '';
+    if (!userId) return c.json({ code: 'MISSING_PARAM', message: 'userId es obligatorio.' }, 400);
+    await useCase.execute({ organizationId: orgId, userId, actorId: c.get('userId') });
     return c.body(null, 204);
   };
 }

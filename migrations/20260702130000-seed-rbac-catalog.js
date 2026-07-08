@@ -6,7 +6,7 @@ module.exports = {
       'customer:create', 'customer:read', 'customer:update', 'customer:delete',
       'product:create',  'product:read',  'product:update',  'product:delete',
       'invoice:create',  'invoice:read',  'invoice:void',    'invoice:authorize',
-      'organization:read', 'organization:update',
+      'organization:read', 'organization:update', 'organization:admin',
       'establishment:create', 'establishment:read', 'establishment:update',
       'user:invite', 'user:read', 'user:update', 'user:assign_role',
       'tax_config:read', 'report:read', 'analytics:read',
@@ -47,6 +47,7 @@ module.exports = {
       vendedor:      '00000000-0000-4000-a000-000000000002',
       contador:      '00000000-0000-4000-a000-000000000003',
       soloLectura:   '00000000-0000-4000-a000-000000000004',
+      supervisor:    '00000000-0000-4000-a000-000000000005',
     };
 
     const roles = [
@@ -54,6 +55,7 @@ module.exports = {
       { id: roleIds.vendedor,      name: 'Vendedor',      description: 'Gestión de clientes, productos y facturación' },
       { id: roleIds.contador,      name: 'Contador',      description: 'Acceso a facturación, reportes y configuración fiscal' },
       { id: roleIds.soloLectura,   name: 'Solo lectura',  description: 'Acceso de solo lectura a todos los módulos' },
+      { id: roleIds.supervisor,    name: 'Supervisor',    description: 'Acceso total excepto configuración de organización' },
     ];
 
     for (const role of roles) {
@@ -79,6 +81,8 @@ module.exports = {
       [roleIds.soloLectura]: permissionCodes
         .filter(c => c.endsWith(':read'))
         .concat(['organization:read']),
+      [roleIds.supervisor]: permissionCodes
+        .filter(c => c !== 'organization:admin' && c !== 'organization:update'),
     };
 
     for (const [roleId, codes] of Object.entries(codesByRole)) {
