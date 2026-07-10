@@ -43,7 +43,6 @@ describe('User', () => {
   });
 
   it('round-trips via toPersistence / fromPersistence', () => {
-    const now = new Date();
     const u = User.fromPersistence({
         id: 'u1',
         email: 'test@test.com',
