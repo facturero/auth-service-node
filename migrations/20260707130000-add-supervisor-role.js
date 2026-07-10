@@ -17,8 +17,8 @@ module.exports = {
 
     // Filtrar los que NO sean organization:admin ni organization:update
     const allowedCodes = permissions
-      .filter((p: any) => p.code !== 'organization:admin' && p.code !== 'organization:update')
-      .map((p: any) => p.id);
+      .filter((p) => p.code !== 'organization:admin' && p.code !== 'organization:update')
+      .map((p) => p.id);
 
     // Asignar todos al Supervisor
     for (const permId of allowedCodes) {

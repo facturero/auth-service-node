@@ -22,7 +22,7 @@ spec:
           command:
             - sh
             - -c
-            - "npm install --save-dev sequelize-cli --silent 2>/dev/null && npx sequelize-cli db:migrate"
+            - "npx sequelize-cli db:migrate"
           env:
             - name: NODE_ENV
               value: "production"
