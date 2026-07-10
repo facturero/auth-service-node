@@ -57,15 +57,16 @@ describe('User', () => {
         updatedAt: new Date('2024-06-01'),
       });
     expect(u.toPersistence()).toEqual({
-      id: 'u-1',
-      email: 'u@t.com',
-      identification: '123',
-      fullName: null,
+      id: 'u1',
+      email: 'test@test.com',
+      identification: 'cedula:123',
+      fullName: 'Test User',
+      avatarFileId: null,
       status: 'active',
       isPlatformAdmin: true,
-      permissionsVersion: 42,
-      createdAt: now,
-      updatedAt: now,
+      permissionsVersion: 0,
+      createdAt: new Date('2024-01-01'),
+      updatedAt: new Date('2024-06-01'),
     });
   });
 });

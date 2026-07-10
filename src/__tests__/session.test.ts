@@ -33,6 +33,7 @@ describe('issueSession', () => {
       email: 'user@test.com',
       emailVerified: false,
       authProvider: 'password',
+      avatarFileId: null,
     });
   });
 

@@ -126,6 +126,7 @@ describe('RegisterWithPasswordUseCase', () => {
       email: 'summary@test.com',
       emailVerified: false,
       authProvider: 'password',
+      avatarFileId: null,
     });
   });
 
