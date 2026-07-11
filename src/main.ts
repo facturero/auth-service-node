@@ -38,6 +38,7 @@ import { createApp } from './interface/http/app';
  */
 async function main(): Promise<void> {
   await sequelize.authenticate();
+  await sequelize.sync();
 
   // Infraestructura
   const repos = buildRepositories(); // repos sin transacción (lecturas / writes simples)
