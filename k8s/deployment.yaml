@@ -110,7 +110,7 @@ spec:
                   name: auth-google
                   key: client-id
             - name: CORS_ORIGIN
-              value: "https://tudominio.com"
+              value: "https://steep-geology-napping.ngrok-free.dev"
           resources:
             requests:
               memory: "128Mi"
