@@ -1,3 +1,4 @@
+import './infrastructure/telemetry/otel';
 import { serve } from '@hono/node-server';
 import { config } from './infrastructure/config';
 import { sequelize } from './infrastructure/persistence/sequelize';

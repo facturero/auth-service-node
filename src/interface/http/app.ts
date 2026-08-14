@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import { httpInstrumentationMiddleware } from '@hono/otel';
 import { AppDependencies, adminRoutes, authRoutes, healthRoutes } from './routes';
 import { errorHandler } from './middlewares';
 
@@ -11,6 +12,13 @@ import { errorHandler } from './middlewares';
 export function createApp(deps: AppDependencies): Hono {
   const app = new Hono();
 
+  if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+    app.use('*', httpInstrumentationMiddleware({
+      serviceName: process.env.OTEL_SERVICE_NAME ?? 'auth-service',
+      captureRequestHeaders: ['x-request-id'],
+      spanNameFactory: (c) => `HTTP ${c.req.method} ${c.req.path}`,
+    }));
+  }
   app.use('*', logger());
   app.use(
     '*',
