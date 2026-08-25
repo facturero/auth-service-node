@@ -103,6 +103,95 @@ RefreshTokenModel.init(
   },
 );
 
+export class PosDeviceModel extends Model<
+  InferAttributes<PosDeviceModel>,
+  InferCreationAttributes<PosDeviceModel>
+> {
+  declare id: string;
+  declare emission_point_id: string;
+  declare organization_id: string;
+  declare label: string | null;
+  declare created_at: Date;
+  declare updated_at: Date;
+}
+
+  PosDeviceModel.init(
+    {
+      id: { type: DataTypes.CHAR(36), primaryKey: true },
+      emission_point_id: { type: DataTypes.CHAR(36), allowNull: false },
+      organization_id: { type: DataTypes.CHAR(36), allowNull: false },
+      label: { type: DataTypes.STRING(255), allowNull: true },
+      created_at: DataTypes.DATE,
+      updated_at: DataTypes.DATE,
+    },
+    {
+      sequelize,
+      tableName: 'pos_devices',
+      timestamps: false,
+      indexes: [{ fields: ['emission_point_id'] }],
+    },
+  );
+
+export class DeviceRefreshTokenModel extends Model<
+  InferAttributes<DeviceRefreshTokenModel>,
+  InferCreationAttributes<DeviceRefreshTokenModel>
+> {
+  declare id: string;
+  declare pos_device_id: string;
+  declare token_hash: string;
+  declare expires_at: Date;
+  declare revoked_at: Date | null;
+  declare replaced_by: string | null;
+  declare created_at: Date;
+}
+
+DeviceRefreshTokenModel.init(
+  {
+    id: { type: DataTypes.CHAR(36), primaryKey: true },
+    pos_device_id: { type: DataTypes.CHAR(36), allowNull: false },
+    token_hash: { type: DataTypes.STRING(255), allowNull: false, unique: true },
+    expires_at: { type: DataTypes.DATE, allowNull: false },
+    revoked_at: { type: DataTypes.DATE, allowNull: true },
+    replaced_by: { type: DataTypes.CHAR(36), allowNull: true },
+    created_at: DataTypes.DATE,
+  },
+  {
+    sequelize,
+    tableName: 'device_refresh_tokens',
+    timestamps: false,
+    indexes: [{ fields: ['pos_device_id'] }],
+  },
+);
+
+export class PasswordResetTokenModel extends Model<
+  InferAttributes<PasswordResetTokenModel>,
+  InferCreationAttributes<PasswordResetTokenModel>
+> {
+  declare id: string;
+  declare user_id: string;
+  declare token_hash: string;
+  declare expires_at: Date;
+  declare consumed_at: Date | null;
+  declare created_at: Date;
+}
+
+PasswordResetTokenModel.init(
+  {
+    id: { type: DataTypes.CHAR(36), primaryKey: true },
+    user_id: { type: DataTypes.CHAR(36), allowNull: false },
+    token_hash: { type: DataTypes.STRING(255), allowNull: false, unique: true },
+    expires_at: { type: DataTypes.DATE, allowNull: false },
+    consumed_at: { type: DataTypes.DATE, allowNull: true },
+    created_at: DataTypes.DATE,
+  },
+  {
+    sequelize,
+    tableName: 'password_reset_tokens',
+    timestamps: false,
+    indexes: [{ fields: ['user_id'] }],
+  },
+);
+
 export class OutboxModel extends Model<
   InferAttributes<OutboxModel>,
   InferCreationAttributes<OutboxModel>
@@ -144,6 +233,7 @@ export class UserModel extends Model<
 > {
   declare id: string;
   declare email: string;
+  declare username: string;
   declare identification: string | null;
   declare full_name: string | null;
   declare avatar_file_id: string | null;
@@ -158,6 +248,7 @@ UserModel.init(
   {
     id: { type: DataTypes.CHAR(36), primaryKey: true },
     email: { type: DataTypes.STRING(255), allowNull: false, unique: true },
+    username: { type: DataTypes.STRING(7), allowNull: false, unique: true },
     identification: { type: DataTypes.STRING(20), allowNull: true, unique: true },
     full_name: { type: DataTypes.STRING(255), allowNull: true },
     avatar_file_id: { type: DataTypes.CHAR(36), allowNull: true },
@@ -272,9 +363,7 @@ export class UserRoleModel extends Model<
   declare organization_id: string;
   declare role_id: string;
   declare created_at: Date;
-}
-
-UserRoleModel.init(
+}UserRoleModel.init(
   {
     id: { type: DataTypes.CHAR(36), primaryKey: true },
     user_id: { type: DataTypes.CHAR(36), allowNull: false },
@@ -287,6 +376,28 @@ UserRoleModel.init(
     tableName: 'user_roles',
     timestamps: false,
     indexes: [{ unique: true, fields: ['user_id', 'organization_id', 'role_id'] }],
+  },
+);
+
+export class UserEstablishmentModel extends Model<
+  InferAttributes<UserEstablishmentModel>,
+  InferCreationAttributes<UserEstablishmentModel>
+> {
+  declare user_id: string;
+  declare establishment_id: string;
+  declare created_at: Date;
+}
+
+UserEstablishmentModel.init(
+  {
+    user_id: { type: DataTypes.CHAR(36), allowNull: false, primaryKey: true },
+    establishment_id: { type: DataTypes.CHAR(36), allowNull: false, primaryKey: true },
+    created_at: DataTypes.DATE,
+  },
+  {
+    sequelize,
+    tableName: 'user_establishments',
+    timestamps: false,
   },
 );
 
@@ -326,3 +437,32 @@ CredentialModel.hasMany(RefreshTokenModel, { foreignKey: 'credential_id' });
 RefreshTokenModel.belongsTo(CredentialModel, { foreignKey: 'credential_id' });
 CredentialModel.belongsTo(UserModel, { foreignKey: 'user_id' });
 UserModel.hasOne(CredentialModel, { foreignKey: 'user_id' });
+
+export class TrustedIpModel extends Model<
+  InferAttributes<TrustedIpModel>,
+  InferCreationAttributes<TrustedIpModel>
+> {
+  declare id: string;
+  declare ip: string;
+  declare label: string | null;
+  declare enabled: boolean;
+  declare created_at: Date;
+  declare updated_at: Date;
+}
+
+TrustedIpModel.init(
+  {
+    id: { type: DataTypes.CHAR(36), primaryKey: true },
+    ip: { type: DataTypes.STRING(45), allowNull: false, unique: true },
+    label: { type: DataTypes.STRING(255), allowNull: true },
+    enabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    created_at: DataTypes.DATE,
+    updated_at: DataTypes.DATE,
+  },
+  {
+    sequelize,
+    tableName: 'trusted_ips',
+    timestamps: false,
+    indexes: [{ unique: true, fields: ['ip'] }],
+  },
+);

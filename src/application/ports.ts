@@ -72,6 +72,15 @@ export interface InviteTokenService {
 }
 
 /**
+ * Puerto para construir el enlace de restablecimiento de contraseña que se
+ * envía por correo cuando un administrador dispara el flujo "restaurar
+ * contraseña" de un usuario.
+ */
+export interface PasswordResetLinkService {
+  buildResetLink(token: string): string;
+}
+
+/**
  * Unidad de trabajo: ejecuta `work` dentro de una transacción y le entrega
  * un conjunto de repositorios ligados a ella. Si `work` lanza, se hace rollback.
  */

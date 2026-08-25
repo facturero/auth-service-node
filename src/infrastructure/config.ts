@@ -40,6 +40,8 @@ const schema = z.object({
   FRONTEND_URL: z.string().default('http://localhost:5173'),
 
   RABBITMQ_URL: z.string().optional(),
+
+  INTERNAL_SERVICE_SECRET: z.string().min(1),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -96,6 +98,7 @@ export interface AppConfig {
   CORS_ORIGIN: string;
   FRONTEND_URL: string;
   RABBITMQ_URL?: string;
+  INTERNAL_SERVICE_SECRET: string;
 }
 
 export const config: AppConfig = {
@@ -116,4 +119,5 @@ export const config: AppConfig = {
   CORS_ORIGIN: env.CORS_ORIGIN,
   FRONTEND_URL: env.FRONTEND_URL,
   RABBITMQ_URL: env.RABBITMQ_URL,
+  INTERNAL_SERVICE_SECRET: env.INTERNAL_SERVICE_SECRET,
 };

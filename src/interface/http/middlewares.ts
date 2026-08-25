@@ -1,6 +1,6 @@
 import { Context, MiddlewareHandler } from 'hono';
 import { TokenService } from '../../application/ports';
-import { AppError, ForbiddenError, UnauthorizedError } from '../../domain/errors';
+import { AppError, ForbiddenError, InvalidInternalSecretError, UnauthorizedError } from '../../domain/errors';
 
 /**
  * Variables que el middleware de auth deja disponibles en el contexto Hono.
@@ -40,6 +40,22 @@ export function requirePermission(perm: string): MiddlewareHandler<{ Variables: 
   return async (c, next) => {
     const perms = c.get('permissions') ?? [];
     if (!perms.includes(perm)) throw new ForbiddenError();
+    await next();
+  };
+}
+
+/**
+ * Protege endpoints internos (llamados solo por otros servicios de la red
+ * interna, ej. organization-service durante el emparejamiento de un POS).
+ * NO usa JWT de usuario — compara un secreto compartido por header, igual
+ * al patrón INTERNAL_SERVICE_SECRET ya usado en billing/document/fiscal-ecuador.
+ */
+export function requireInternalSecret(expectedSecret: string): MiddlewareHandler {
+  return async (c, next) => {
+    const provided = c.req.header('X-Internal-Secret');
+    if (!provided || provided !== expectedSecret) {
+      throw new InvalidInternalSecretError();
+    }
     await next();
   };
 }

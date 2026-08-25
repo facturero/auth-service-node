@@ -19,6 +19,10 @@ import { ListPermissionsUseCase } from '../application/use-cases/list-permission
 import { CompleteProfileUseCase } from '../application/use-cases/complete-profile';
 import { SeedOrganizationRolesUseCase } from '../application/use-cases/seed-organization-roles';
 import { AcceptInviteUseCase } from '../application/use-cases/accept-invite';
+import { RequestPasswordResetUseCase } from '../application/use-cases/request-password-reset';
+import { ResetPasswordUseCase } from '../application/use-cases/reset-password';
+import { ProvisionDeviceAccountUseCase } from '../application/use-cases/provision-device-account';
+import { UpdateUserEstablishmentsUseCase } from '../application/use-cases/update-user-establishments';
 import {
   InMemoryUnitOfWork,
   InMemoryCredentialRepository,
@@ -28,7 +32,9 @@ import {
   InMemoryPermissionRepository,
   InMemoryMembershipRepository,
   InMemoryUserRoleRepository,
+  InMemoryUserEstablishmentRepository,
   InMemoryOrganizationRepository,
+  InMemoryTrustedIpRepository,
   MockAccessContextResolver,
   MockPasswordHasher,
   MockTokenService,
@@ -45,8 +51,9 @@ function buildTestApp() {
   const permissions = new InMemoryPermissionRepository();
   const memberships = new InMemoryMembershipRepository();
   const userRoles = new InMemoryUserRoleRepository();
+  const userEstablishments = new InMemoryUserEstablishmentRepository();
   const organizations = new InMemoryOrganizationRepository();
-  const uow = new InMemoryUnitOfWork({ credentials, refreshTokens, users, roles, permissions, memberships, userRoles });
+  const uow = new InMemoryUnitOfWork({ credentials, refreshTokens, users, roles, permissions, memberships, userRoles, userEstablishments });
   const hasher = new MockPasswordHasher();
   const tokenService = new MockTokenService();
   const googleVerifier = new MockGoogleVerifier();
@@ -62,20 +69,28 @@ function buildTestApp() {
       logout: new LogoutUseCase(refreshTokens, tokenService),
       getMe: new GetMeUseCase(credentials, users, organizations),
       switchOrg: new SwitchOrganizationUseCase(uow, tokenService, accessContext),
-      listUsers: new ListUsersUseCase(users, userRoles, roles, organizations),
+      listUsers: new ListUsersUseCase(users, userRoles, roles, organizations, credentials, userEstablishments),
       inviteUser: new InviteUserUseCase(uow, { generateInviteToken: () => 'http://localhost:5173/accept-invite?token=mock' }),
       assignRole: new AssignRoleUseCase(uow),
       disableUser: new DisableUserUseCase(uow),
+      updateUserEstablishments: new UpdateUserEstablishmentsUseCase(uow),
       listRoles: new ListRolesUseCase(roles),
       createRole: new CreateRoleUseCase(uow),
       updateRolePermissions: new UpdateRolePermissionsUseCase(uow),
       completeProfile: new CompleteProfileUseCase(uow, tokenService, accessContext, seedOrg, refreshTokens),
       listPermissions: new ListPermissionsUseCase(permissions),
       acceptInvite: new AcceptInviteUseCase(uow, hasher, tokenService, accessContext, refreshTokens),
+      resetPassword: new ResetPasswordUseCase(uow, hasher, tokenService, accessContext, refreshTokens),
+      requestPasswordReset: new RequestPasswordResetUseCase(uow, {
+        buildResetLink: (token) => `http://localhost:5173/restablecer-contrasena?token=${encodeURIComponent(token)}`,
+      }),
+      provisionDeviceAccount: new ProvisionDeviceAccountUseCase(uow, tokenService),
     },
     tokenService,
     accessContext,
     corsOrigin: '*',
+    internalSecret: 'test-secret',
+    trustedIpsRepository: new InMemoryTrustedIpRepository(),
   };
 
   const app = createApp(deps);
@@ -301,3 +316,4 @@ describe('E2E: Auth API', () => {
     });
   });
 });
+

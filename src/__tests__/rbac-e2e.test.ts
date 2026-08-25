@@ -20,6 +20,10 @@ import { ListPermissionsUseCase } from '../application/use-cases/list-permission
 import { CompleteProfileUseCase } from '../application/use-cases/complete-profile';
 import { SeedOrganizationRolesUseCase } from '../application/use-cases/seed-organization-roles';
 import { AcceptInviteUseCase } from '../application/use-cases/accept-invite';
+import { RequestPasswordResetUseCase } from '../application/use-cases/request-password-reset';
+import { ResetPasswordUseCase } from '../application/use-cases/reset-password';
+import { ProvisionDeviceAccountUseCase } from '../application/use-cases/provision-device-account';
+import { UpdateUserEstablishmentsUseCase } from '../application/use-cases/update-user-establishments';
 import {
   AccessTokenClaims,
   GeneratedRefreshToken,
@@ -35,6 +39,7 @@ import {
   InMemoryPermissionRepository,
   InMemoryMembershipRepository,
   InMemoryUserRoleRepository,
+  InMemoryUserEstablishmentRepository,
   InMemoryOrganizationRepository,
   MockAccessContextResolver,
   MockPasswordHasher,
@@ -130,8 +135,9 @@ function buildTestApp() {
   const permissions = new InMemoryPermissionRepository();
   const memberships = new InMemoryMembershipRepository();
   const userRoles = new InMemoryUserRoleRepository();
+  const userEstablishments = new InMemoryUserEstablishmentRepository();
   const organizations = new InMemoryOrganizationRepository();
-  const uow = new InMemoryUnitOfWork({ credentials, refreshTokens, users, roles, permissions, memberships, userRoles });
+  const uow = new InMemoryUnitOfWork({ credentials, refreshTokens, users, roles, permissions, memberships, userRoles, userEstablishments });
   const hasher = new MockPasswordHasher();
   const tokenService = new RbacMockTokenService();
   const googleVerifier = new MockGoogleVerifier();
@@ -147,20 +153,28 @@ function buildTestApp() {
       logout: new LogoutUseCase(refreshTokens, tokenService),
       getMe: new GetMeUseCase(credentials, users, organizations),
       switchOrg: new SwitchOrganizationUseCase(uow, tokenService, accessContext),
-      listUsers: new ListUsersUseCase(users, userRoles, roles, organizations),
+      listUsers: new ListUsersUseCase(users, userRoles, roles, organizations, credentials, userEstablishments),
       inviteUser: new InviteUserUseCase(uow, { generateInviteToken: () => 'http://localhost:5173/accept-invite?token=mock' }),
       assignRole: new AssignRoleUseCase(uow),
       disableUser: new DisableUserUseCase(uow),
+      updateUserEstablishments: new UpdateUserEstablishmentsUseCase(uow),
       listRoles: new ListRolesUseCase(roles),
       createRole: new CreateRoleUseCase(uow),
       updateRolePermissions: new UpdateRolePermissionsUseCase(uow),
       completeProfile: new CompleteProfileUseCase(uow, tokenService, accessContext, seedOrg, refreshTokens),
       listPermissions: new ListPermissionsUseCase(permissions),
       acceptInvite: new AcceptInviteUseCase(uow, hasher, tokenService, accessContext, refreshTokens),
+      resetPassword: new ResetPasswordUseCase(uow, hasher, tokenService, accessContext, refreshTokens),
+      requestPasswordReset: new RequestPasswordResetUseCase(uow, {
+        buildResetLink: (token) => `http://localhost:5173/restablecer-contrasena?token=${encodeURIComponent(token)}`,
+      }),
+      provisionDeviceAccount: new ProvisionDeviceAccountUseCase(uow, tokenService),
     },
     tokenService,
     accessContext,
     corsOrigin: '*',
+    internalSecret: 'test-secret',
+    trustedIpsRepository: { findAll: async () => [], findEnabled: async () => [], findByIp: async () => null, create: async (d) => ({ ...d, created_at: new Date(), updated_at: new Date() }), update: async () => null, delete: async () => true },
   };
 
   const app = createApp(deps);
@@ -173,14 +187,16 @@ function buildTestApp() {
       headers,
       body: JSON.stringify(body),
     }));
-    return { status: res.status, json: await res.json() as Json };
+    const text = await res.text();
+    return { status: res.status, json: text ? JSON.parse(text) as Json : {} };
   }
 
   async function getJson(path: string, token?: string): Promise<{ status: number; json: Json }> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await app.fetch(new Request(`http://localhost${path}`, { method: 'GET', headers }));
-    return { status: res.status, json: await res.json() as Json };
+    const text = await res.text();
+    return { status: res.status, json: text ? JSON.parse(text) as Json : {} };
   }
 
   return { app, postJson, getJson, uow, credentials, users, roles, permissions, memberships, userRoles, tokenService };
@@ -327,4 +343,188 @@ describe('E2E: RBAC API', () => {
       expect(status).toBe(403);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Password permissions (password:view / password:change)
+  // -------------------------------------------------------------------------
+  describe('password:view gating on GET /users', () => {
+    const orgId = uuidOrg;
+
+    async function registerInOrg(email: string, permissionCodes: string[]): Promise<{ userId: string; token: string }> {
+      const reg = await t.postJson('/auth/register', { email, identification: email, password: 'Secure123!' });
+      const userId = (reg.json.user as Json).id as string;
+
+      const permIds = permissionCodes.map((code) => addPermission(t.permissions, code));
+      const role = Role.createForOrg({ organizationId: orgId, name: `Role-${email}`, description: '', isSystem: false });
+      await t.roles.save(role);
+      await t.roles.setPermissions(role.id, permIds);
+
+      await t.memberships.save(Membership.create({ userId, organizationId: orgId, status: 'active' }));
+      await t.userRoles.assign(UserRole.assign({ userId, organizationId: orgId, roleId: role.id }));
+
+      const user = await t.users.findById(userId);
+      if (user) user.bumpPermissionsVersion();
+
+      const login = await t.postJson('/auth/login', { email, password: 'Secure123!' });
+      return { userId, token: login.json.accessToken as string };
+    }
+
+    it('includes passwordHash only when the actor has password:view', async () => {
+      const employee = await registerInOrg('emp@test.com', ['user:read']);
+      const viewer = await registerInOrg('view@test.com', ['user:read']);
+      const admin = await registerInOrg('admview@test.com', ['user:read', 'password:view']);
+
+      const asViewer = await t.getJson('/users', viewer.token);
+      expect(asViewer.status).toBe(200);
+      const empForViewer = (asViewer.json as unknown as Json[]).find((u) => u.email === 'emp@test.com');
+      expect((empForViewer as Json).passwordHash).toBeNull();
+      expect((empForViewer as Json).hasPassword).toBe(true);
+
+      const asAdmin = await t.getJson('/users', admin.token);
+      const empForAdmin = (asAdmin.json as unknown as Json[]).find((u) => u.email === 'emp@test.com');
+      expect((empForAdmin as Json).passwordHash).toBe('hashed:Secure123!');
+
+      expect(employee.userId).toBeTruthy();
+    });
+
+    it('returns 403 without user:read even with password:view', async () => {
+      const onlyPassword = await registerInOrg('pwonly@test.com', ['password:view']);
+      const { status } = await t.getJson('/users', onlyPassword.token);
+      expect(status).toBe(403);
+    });
+  });
+
+  describe('POST /users/:id/password-reset (requirePermission: password:change)', () => {
+    const orgId = uuidOrg;
+
+    async function registerInOrg(email: string, permissionCodes: string[]): Promise<{ userId: string; token: string }> {
+      const reg = await t.postJson('/auth/register', { email, identification: email, password: 'Secure123!' });
+      const userId = (reg.json.user as Json).id as string;
+
+      const permIds = permissionCodes.map((code) => addPermission(t.permissions, code));
+      const role = Role.createForOrg({ organizationId: orgId, name: `Role-${email}`, description: '', isSystem: false });
+      await t.roles.save(role);
+      await t.roles.setPermissions(role.id, permIds);
+
+      await t.memberships.save(Membership.create({ userId, organizationId: orgId, status: 'active' }));
+      await t.userRoles.assign(UserRole.assign({ userId, organizationId: orgId, roleId: role.id }));
+
+      const user = await t.users.findById(userId);
+      if (user) user.bumpPermissionsVersion();
+
+      const login = await t.postJson('/auth/login', { email, password: 'Secure123!' });
+      return { userId, token: login.json.accessToken as string };
+    }
+
+    function lastResetEvent(): Json | null {
+      const events = t.uow.outbox.events.filter((e) => e.type === 'identity.user.password_reset_requested');
+      const last = events[events.length - 1];
+      return last ? (last.payload as Json) : null;
+    }
+
+    it('sends a password-reset email with a single-use link', async () => {
+      const admin = await registerInOrg('adminreset@test.com', ['password:change']);
+      const employee = await registerInOrg('empreset@test.com', ['user:read']);
+
+      const { status } = await t.postJson('/users/' + employee.userId + '/password-reset', {}, admin.token);
+      expect(status).toBe(204);
+
+      const payload = lastResetEvent();
+      expect(payload).toBeTruthy();
+      expect(payload?.userId).toBe(employee.userId);
+      expect((payload?.resetUrl as string) ?? '').toContain('restablecer-contrasena?token=');
+    });
+
+    it('returns 403 when the token lacks password:change', async () => {
+      const viewer = await registerInOrg('resetview@test.com', ['user:read']);
+      const employee = await registerInOrg('resetemp@test.com', ['user:read']);
+
+      const { status, json } = await t.postJson('/users/' + employee.userId + '/password-reset', {}, viewer.token);
+      expect(status).toBe(403);
+      expect(json.code).toBe('FORBIDDEN');
+    });
+
+    it('returns 403 when requesting your own reset', async () => {
+      const admin = await registerInOrg('selfreset@test.com', ['password:change']);
+
+      const { status, json } = await t.postJson('/users/' + admin.userId + '/password-reset', {}, admin.token);
+      expect(status).toBe(403);
+      expect(json.code).toBe('FORBIDDEN');
+    });
+  });
+
+  describe('POST /auth/password-reset', () => {
+    const orgId = uuidOrg;
+
+    async function registerInOrg(email: string, permissionCodes: string[]): Promise<{ userId: string; token: string }> {
+      const reg = await t.postJson('/auth/register', { email, identification: email, password: 'Secure123!' });
+      const userId = (reg.json.user as Json).id as string;
+
+      const permIds = permissionCodes.map((code) => addPermission(t.permissions, code));
+      const role = Role.createForOrg({ organizationId: orgId, name: `Role-${email}`, description: '', isSystem: false });
+      await t.roles.save(role);
+      await t.roles.setPermissions(role.id, permIds);
+
+      await t.memberships.save(Membership.create({ userId, organizationId: orgId, status: 'active' }));
+      await t.userRoles.assign(UserRole.assign({ userId, organizationId: orgId, roleId: role.id }));
+
+      const user = await t.users.findById(userId);
+      if (user) user.bumpPermissionsVersion();
+
+      const login = await t.postJson('/auth/login', { email, password: 'Secure123!' });
+      return { userId, token: login.json.accessToken as string };
+    }
+
+    function extractResetToken(email: string): string {
+      const events = t.uow.outbox.events.filter((e) => e.type === 'identity.user.password_reset_requested');
+      for (const e of events) {
+        const payload = e.payload as Json;
+        const url = payload.resetUrl as string;
+        const query = url.split('?')[1] ?? '';
+        const params = new URLSearchParams(query);
+        if (params.get('token')) return params.get('token') as string;
+      }
+      throw new Error(`No reset link found for ${email}`);
+    }
+
+    it('resets the password, revokes old sessions and issues a new session', async () => {
+      const admin = await registerInOrg('adminr@test.com', ['password:change']);
+      const employee = await registerInOrg('empr@test.com', ['user:read']);
+
+      await t.postJson('/users/' + employee.userId + '/password-reset', {}, admin.token);
+      const token = extractResetToken(employee.userId);
+
+      const { status, json } = await t.postJson('/auth/password-reset', { token, password: 'NuevaPass1!' });
+      expect(status).toBe(200);
+      expect(json.accessToken).toBeTruthy();
+
+      // Old password no longer works
+      const oldLogin = await t.postJson('/auth/login', { email: 'empr@test.com', password: 'Secure123!' });
+      expect(oldLogin.status).toBe(401);
+
+      // New password works
+      const newLogin = await t.postJson('/auth/login', { email: 'empr@test.com', password: 'NuevaPass1!' });
+      expect(newLogin.status).toBe(200);
+    });
+
+    it('rejects a consumed token (single use)', async () => {
+      const admin = await registerInOrg('adminu@test.com', ['password:change']);
+      const employee = await registerInOrg('empu@test.com', ['user:read']);
+
+      await t.postJson('/users/' + employee.userId + '/password-reset', {}, admin.token);
+      const token = extractResetToken(employee.userId);
+
+      await t.postJson('/auth/password-reset', { token, password: 'NuevaPass1!' });
+      const { status, json } = await t.postJson('/auth/password-reset', { token, password: 'OtraPass1!' });
+      expect(status).toBe(400);
+      expect(json.code).toBe('INVALID_RESET_TOKEN');
+    });
+
+    it('rejects an invalid token', async () => {
+      const { status, json } = await t.postJson('/auth/password-reset', { token: 'no-existe', password: 'NuevaPass1!' });
+      expect(status).toBe(400);
+      expect(json.code).toBe('INVALID_RESET_TOKEN');
+    });
+  });
 });
+

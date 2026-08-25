@@ -17,6 +17,10 @@ import { CreateRoleUseCase } from '../../application/use-cases/create-role';
 import { UpdateRolePermissionsUseCase } from '../../application/use-cases/update-role-permissions';
 import { ListPermissionsUseCase } from '../../application/use-cases/list-permissions';
 import { AcceptInviteUseCase } from '../../application/use-cases/accept-invite';
+import { ResetPasswordUseCase } from '../../application/use-cases/reset-password';
+import { RequestPasswordResetUseCase } from '../../application/use-cases/request-password-reset';
+import { ProvisionDeviceAccountUseCase } from '../../application/use-cases/provision-device-account';
+import { UpdateUserEstablishmentsUseCase } from '../../application/use-cases/update-user-establishments';
 import {
   acceptInviteSchema,
   assignRoleSchema,
@@ -26,11 +30,16 @@ import {
   inviteUserSchema,
   loginSchema,
   logoutSchema,
+  provisionDeviceAccountSchema,
   refreshSchema,
   registerSchema,
+  resetPasswordSchema,
   switchOrgSchema,
   updateRolePermissionsSchema,
+  updateUserEstablishmentsSchema,
   validateJson,
+  createTrustedIpSchema,
+  updateTrustedIpSchema,
 } from './validators';
 import {
   acceptInviteController,
@@ -46,12 +55,22 @@ import {
   loginController,
   logoutController,
   meController,
+  provisionDeviceAccountController,
   refreshController,
   registerController,
+  requestPasswordResetController,
+  resetPasswordController,
   switchOrgController,
   updateRolePermissionsController,
+  updateUserEstablishmentsController,
+  listTrustedIpsController,
+  createTrustedIpController,
+  deleteTrustedIpController,
+  updateTrustedIpController,
+  listEnabledTrustedIpsController,
 } from './controllers';
-import { AuthVariables, makeAuthMiddleware, requirePermission } from './middlewares';
+import { AuthVariables, makeAuthMiddleware, requireInternalSecret, requirePermission } from './middlewares';
+import { TrustedIpRepository } from '../../domain/repositories';
 
 /** Dependencias que la capa HTTP recibe del composition root. */
 export interface AppDependencies {
@@ -68,15 +87,21 @@ export interface AppDependencies {
     inviteUser: InviteUserUseCase;
     assignRole: AssignRoleUseCase;
     disableUser: DisableUserUseCase;
+    updateUserEstablishments: UpdateUserEstablishmentsUseCase;
     listRoles: ListRolesUseCase;
     createRole: CreateRoleUseCase;
     updateRolePermissions: UpdateRolePermissionsUseCase;
     listPermissions: ListPermissionsUseCase;
     acceptInvite: AcceptInviteUseCase;
+    resetPassword: ResetPasswordUseCase;
+    requestPasswordReset: RequestPasswordResetUseCase;
+    provisionDeviceAccount: ProvisionDeviceAccountUseCase;
   };
   tokenService: TokenService;
   accessContext: AccessContextResolver;
   corsOrigin: string;
+  internalSecret: string;
+  trustedIpsRepository: TrustedIpRepository;
 }
 
 export function healthRoutes(): Hono {
@@ -101,6 +126,7 @@ export function authRoutes(deps: AppDependencies): Hono<{ Variables: AuthVariabl
   r.post('/complete-profile', auth, validateJson(completeProfileSchema), completeProfileController(useCases.completeProfile));
 
   r.post('/accept-invite', validateJson(acceptInviteSchema), acceptInviteController(useCases.acceptInvite));
+  r.post('/password-reset', validateJson(resetPasswordSchema), resetPasswordController(useCases.resetPassword));
 
   return r;
 }
@@ -114,12 +140,49 @@ export function adminRoutes(deps: AppDependencies): Hono<{ Variables: AuthVariab
   r.post('/users/invite', auth, requirePermission('user:invite'), validateJson(inviteUserSchema), inviteUserController(useCases.inviteUser));
   r.post('/users/:id/roles', auth, requirePermission('user:assign_role'), validateJson(assignRoleSchema), assignRoleController(useCases.assignRole));
   r.post('/users/:id/disable', auth, requirePermission('user:update'), disableUserController(useCases.disableUser));
+  r.post('/users/:id/password-reset', auth, requirePermission('password:change'), requestPasswordResetController(useCases.requestPasswordReset));
+  r.post('/users/:id/establishments', auth, requirePermission('user:update'), validateJson(updateUserEstablishmentsSchema), updateUserEstablishmentsController(useCases.updateUserEstablishments));
 
   r.get('/roles', auth, requirePermission('user:read'), listRolesController(useCases.listRoles));
   r.post('/roles', auth, requirePermission('user:assign_role'), validateJson(createRoleSchema), createRoleController(useCases.createRole));
   r.patch('/roles/:id/permissions', auth, requirePermission('user:assign_role'), validateJson(updateRolePermissionsSchema), updateRolePermissionsController(useCases.updateRolePermissions));
 
   r.get('/permissions', auth, listPermissionsController(useCases.listPermissions));
+
+  return r;
+}
+
+// Rutas internas (servicio-a-servicio), nunca expuestas públicamente por el
+// gateway. Protegidas por X-Internal-Secret, no por JWT de usuario.
+export function internalRoutes(deps: AppDependencies): Hono {
+  const r = new Hono();
+  const { useCases } = deps;
+
+  r.post('/internal/device-accounts',
+    requireInternalSecret(deps.internalSecret),
+    validateJson(provisionDeviceAccountSchema),
+    provisionDeviceAccountController(useCases.provisionDeviceAccount));
+
+  return r;
+}
+
+/**
+ * Rutas de IPs confiables.
+ * - CRUD protegido por admin en /trusted-ips
+ * - Endpoint público en /trusted-ips/enabled para que el gateway consulte (sin auth)
+ */
+export function trustedIpsRoutes(deps: AppDependencies): Hono<{ Variables: AuthVariables }> {
+  const r = new Hono<{ Variables: AuthVariables }>();
+  const auth = makeAuthMiddleware(deps.tokenService);
+  const repo = deps.trustedIpsRepository;
+
+  r.get('/trusted-ips', auth, requirePermission('user:read'), listTrustedIpsController(repo));
+  r.post('/trusted-ips', auth, requirePermission('user:update'), validateJson(createTrustedIpSchema), createTrustedIpController(repo));
+  r.patch('/trusted-ips/:id', auth, requirePermission('user:update'), validateJson(updateTrustedIpSchema), updateTrustedIpController(repo));
+  r.delete('/trusted-ips/:id', auth, requirePermission('user:update'), deleteTrustedIpController(repo));
+
+  // Endpoint público — el gateway lo llama internamente sin JWT
+  r.get('/trusted-ips/enabled', listEnabledTrustedIpsController(repo));
 
   return r;
 }

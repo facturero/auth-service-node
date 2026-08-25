@@ -3,33 +3,52 @@ import { QueryTypes, Transaction } from 'sequelize';
 import { sequelize } from './sequelize';
 import {
   CredentialModel,
+  DeviceRefreshTokenModel,
   MembershipModel,
   OAuthAccountModel,
   OrganizationModel,
   OutboxModel,
+  PasswordResetTokenModel,
   PermissionModel,
+  PosDeviceModel,
   RefreshTokenModel,
   RoleModel,
   RolePermissionModel,
   UserModel,
   UserRoleModel,
+  UserEstablishmentModel,
+  TrustedIpModel,
 } from './models';
-import { Credential, OAuthAccount, OAuthProvider, RefreshToken } from '../../domain/entities';
-import { User, Organization, Role, Permission, Membership, UserRole } from '../../domain/rbac';
+import {
+  Credential,
+  DeviceRefreshToken,
+  OAuthAccount,
+  OAuthProvider,
+  PasswordResetToken,
+  PosDevice,
+  RefreshToken,
+} from '../../domain/entities';
+import { User, Organization, Role, Permission, Membership, UserRole, UserEstablishment } from '../../domain/rbac';
 import {
   AccessQuery,
   CredentialRepository,
+  DeviceRefreshTokenRepository,
   DomainEvent,
   MembershipRepository,
   OAuthAccountRepository,
   OrganizationRepository,
   OutboxRepository,
+  PasswordResetTokenRepository,
   PermissionRepository,
+  PosDeviceRepository,
   RefreshTokenRepository,
   Repositories,
   RoleRepository,
+  TrustedIp,
+  TrustedIpRepository,
   UserRepository,
   UserRoleRepository,
+  UserEstablishmentRepository,
 } from '../../domain/repositories';
 import { UnitOfWork } from '../../application/ports';
 
@@ -69,6 +88,40 @@ function toRefreshToken(m: RefreshTokenModel): RefreshToken {
     replacedBy: m.replaced_by,
     userAgent: m.user_agent,
     ip: m.ip,
+    createdAt: m.created_at,
+  });
+}
+
+function toPosDevice(m: PosDeviceModel): PosDevice {
+  return PosDevice.fromPersistence({
+    id: m.id,
+    emissionPointId: m.emission_point_id,
+    organizationId: m.organization_id,
+    label: m.label,
+    createdAt: m.created_at,
+    updatedAt: m.updated_at,
+  });
+}
+
+function toDeviceRefreshToken(m: DeviceRefreshTokenModel): DeviceRefreshToken {
+  return DeviceRefreshToken.fromPersistence({
+    id: m.id,
+    posDeviceId: m.pos_device_id,
+    tokenHash: m.token_hash,
+    expiresAt: m.expires_at,
+    revokedAt: m.revoked_at,
+    replacedBy: m.replaced_by,
+    createdAt: m.created_at,
+  });
+}
+
+function toPasswordResetToken(m: PasswordResetTokenModel): PasswordResetToken {
+  return PasswordResetToken.fromPersistence({
+    id: m.id,
+    userId: m.user_id,
+    tokenHash: m.token_hash,
+    expiresAt: m.expires_at,
+    consumedAt: m.consumed_at,
     createdAt: m.created_at,
   });
 }
@@ -157,6 +210,86 @@ function refreshTokenRepository(tx?: Transaction): RefreshTokenRepository {
         { transaction: tx },
       );
     },
+    async revokeAllByCredentialId(credentialId) {
+      await RefreshTokenModel.update(
+        { revoked_at: new Date() },
+        { where: { credential_id: credentialId, revoked_at: null }, transaction: tx },
+      );
+    },
+  };
+}
+
+function posDeviceRepository(tx?: Transaction): PosDeviceRepository {
+  return {
+    async findById(id) {
+      const m = await PosDeviceModel.findByPk(id, { transaction: tx });
+      return m ? toPosDevice(m) : null;
+    },
+    async findByEmissionPointId(emissionPointId) {
+      const m = await PosDeviceModel.findOne({ where: { emission_point_id: emissionPointId }, transaction: tx });
+      return m ? toPosDevice(m) : null;
+    },
+    async save(device) {
+      const p = device.toPersistence();
+      await PosDeviceModel.upsert(
+        {
+          id: p.id,
+          emission_point_id: p.emissionPointId,
+          organization_id: p.organizationId,
+          label: p.label,
+          created_at: p.createdAt,
+          updated_at: new Date(),
+        },
+        { transaction: tx },
+      );
+    },
+  };
+}
+
+function deviceRefreshTokenRepository(tx?: Transaction): DeviceRefreshTokenRepository {
+  return {
+    async findByHash(tokenHash) {
+      const m = await DeviceRefreshTokenModel.findOne({ where: { token_hash: tokenHash }, transaction: tx });
+      return m ? toDeviceRefreshToken(m) : null;
+    },
+    async save(token) {
+      const p = token.toPersistence();
+      await DeviceRefreshTokenModel.upsert(
+        {
+          id: p.id,
+          pos_device_id: p.posDeviceId,
+          token_hash: p.tokenHash,
+          expires_at: p.expiresAt,
+          revoked_at: p.revokedAt,
+          replaced_by: p.replacedBy,
+          created_at: p.createdAt,
+        },
+        { transaction: tx },
+      );
+    },
+  };
+}
+
+function passwordResetTokenRepository(tx?: Transaction): PasswordResetTokenRepository {
+  return {
+    async findByHash(tokenHash) {
+      const m = await PasswordResetTokenModel.findOne({ where: { token_hash: tokenHash }, transaction: tx });
+      return m ? toPasswordResetToken(m) : null;
+    },
+    async save(token) {
+      const p = token.toPersistence();
+      await PasswordResetTokenModel.upsert(
+        {
+          id: p.id,
+          user_id: p.userId,
+          token_hash: p.tokenHash,
+          expires_at: p.expiresAt,
+          consumed_at: p.consumedAt,
+          created_at: p.createdAt,
+        },
+        { transaction: tx },
+      );
+    },
   };
 }
 
@@ -185,6 +318,7 @@ function toUser(m: UserModel): User {
   return User.fromPersistence({
     id: m.id,
     email: m.email,
+    username: m.username,
     identification: m.identification,
     fullName: m.full_name,
     avatarFileId: m.avatar_file_id,
@@ -250,6 +384,15 @@ function toUserRole(m: UserRoleModel): UserRole {
   });
 }
 
+function toUserEstablishment(m: UserEstablishmentModel): UserEstablishment {
+  return UserEstablishment.fromPersistence({
+    id: `${m.user_id}:${m.establishment_id}`,
+    userId: m.user_id,
+    establishmentId: m.establishment_id,
+    createdAt: m.created_at,
+  });
+}
+
 // --------------------------- RBAC Repositorios -------------------------------
 
 function userRepository(tx?: Transaction): UserRepository {
@@ -272,6 +415,7 @@ function userRepository(tx?: Transaction): UserRepository {
         {
           id: p.id,
           email: p.email,
+          username: p.username,
           identification: p.identification,
           full_name: p.fullName,
           avatar_file_id: p.avatarFileId,
@@ -448,6 +592,86 @@ function userRoleRepository(tx?: Transaction): UserRoleRepository {
   };
 }
 
+function userEstablishmentRepository(tx?: Transaction): UserEstablishmentRepository {
+  return {
+    async listByUser(userId) {
+      const rows = await UserEstablishmentModel.findAll({
+        where: { user_id: userId },
+        transaction: tx,
+      });
+      return rows.map(toUserEstablishment);
+    },
+    async listUserIdsByEstablishment(establishmentId) {
+      const rows = await UserEstablishmentModel.findAll({
+        where: { establishment_id: establishmentId },
+        attributes: ['user_id'],
+        transaction: tx,
+      });
+      return rows.map((r) => r.user_id);
+    },
+    async replaceForUser(userId, establishmentIds) {
+      await UserEstablishmentModel.destroy({ where: { user_id: userId }, transaction: tx });
+      if (establishmentIds.length > 0) {
+        const now = new Date();
+        await UserEstablishmentModel.bulkCreate(
+          establishmentIds.map((establishmentId) => ({
+            user_id: userId,
+            establishment_id: establishmentId,
+            created_at: now,
+          })),
+          { transaction: tx },
+        );
+      }
+    },
+  };
+}
+
+function toTrustedIp(row: InstanceType<typeof TrustedIpModel>): TrustedIp {
+  return {
+    id: row.id,
+    ip: row.ip,
+    label: row.label,
+    enabled: row.enabled,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+function trustedIpRepository(tx?: Transaction): TrustedIpRepository {
+  return {
+    async findAll() {
+      const rows = await TrustedIpModel.findAll({ transaction: tx });
+      return rows.map(toTrustedIp);
+    },
+    async findEnabled() {
+      const rows = await TrustedIpModel.findAll({ where: { enabled: true }, transaction: tx });
+      return rows.map(toTrustedIp);
+    },
+    async findByIp(ip) {
+      const row = await TrustedIpModel.findOne({ where: { ip }, transaction: tx });
+      return row ? toTrustedIp(row) : null;
+    },
+    async create(data) {
+      const now = new Date();
+      const row = await TrustedIpModel.create(
+        { ...data, created_at: now, updated_at: now },
+        { transaction: tx },
+      );
+      return toTrustedIp(row);
+    },
+    async update(id, data) {
+      const row = await TrustedIpModel.findByPk(id, { transaction: tx });
+      if (!row) return null;
+      await row.update({ ...data, updated_at: new Date() }, { transaction: tx });
+      return toTrustedIp(row);
+    },
+    async delete(id) {
+      const deleted = await TrustedIpModel.destroy({ where: { id }, transaction: tx });
+      return deleted > 0;
+    },
+  };
+}
+
 // --------------------------- AccessQuery -------------------------------------
 
 export const sequelizeAccessQuery: AccessQuery = {
@@ -496,17 +720,22 @@ function organizationRepository(tx?: Transaction): OrganizationRepository {
 
 /** Construye el conjunto de repositorios, opcionalmente ligados a una transacción. */
 export function buildRepositories(tx?: Transaction): Repositories {
-  return {
-    credentials: credentialRepository(tx),
-    oauthAccounts: oauthAccountRepository(tx),
-    refreshTokens: refreshTokenRepository(tx),
-    outbox: outboxRepository(tx),
+    return {
+      credentials: credentialRepository(tx),
+      oauthAccounts: oauthAccountRepository(tx),
+      refreshTokens: refreshTokenRepository(tx),
+      posDevices: posDeviceRepository(tx),
+      deviceRefreshTokens: deviceRefreshTokenRepository(tx),
+      passwordResetTokens: passwordResetTokenRepository(tx),
+      outbox: outboxRepository(tx),
     users: userRepository(tx),
     organizations: organizationRepository(tx),
     roles: roleRepository(tx),
     permissions: permissionRepository(tx),
     memberships: membershipRepository(tx),
     userRoles: userRoleRepository(tx),
+    userEstablishments: userEstablishmentRepository(tx),
+    trustedIps: trustedIpRepository(tx),
   };
 }
 

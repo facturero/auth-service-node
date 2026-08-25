@@ -45,10 +45,15 @@ export const switchOrgSchema = z.object({
 export const inviteUserSchema = z.object({
   email: z.string().email('Email inválido.'),
   roleIds: z.array(z.string().uuid('roleId debe ser un UUID válido.')).min(1),
+  establishmentIds: z.array(z.string().uuid('establishmentId debe ser un UUID válido.')).optional(),
 });
 
 export const assignRoleSchema = z.object({
   roleIds: z.array(z.string().uuid('roleId debe ser un UUID válido.')).min(1),
+});
+
+export const updateUserEstablishmentsSchema = z.object({
+  establishmentIds: z.array(z.string().uuid('establishmentId debe ser un UUID válido.')),
 });
 
 export const createRoleSchema = z.object({
@@ -69,6 +74,14 @@ export const acceptInviteSchema = z.object({
     .max(128, 'Máximo 128 caracteres.'),
 });
 
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'El token es obligatorio.'),
+  password: z
+    .string()
+    .min(8, 'Debe tener al menos 8 caracteres.')
+    .max(128, 'Máximo 128 caracteres.'),
+});
+
 export const completeProfileSchema = z.object({
   fullName: z.string().min(1, 'El nombre es obligatorio.').max(255),
   identificationType: z.enum(['cedula', 'ruc', 'passport', 'dni'], {
@@ -76,6 +89,27 @@ export const completeProfileSchema = z.object({
   }),
   identificationNumber: z.string().min(1, 'El número de identificación es obligatorio.').max(30),
   avatarFileId: z.string().optional(),
+});
+
+  export const provisionDeviceAccountSchema = z.object({
+      organizationId: z.string().uuid('organizationId debe ser un UUID válido.'),
+      emissionPointId: z.string().uuid('emissionPointId debe ser un UUID válido.'),
+      deviceId: z.string().uuid('deviceId debe ser un UUID válido.'),
+      label: z.string().max(255).optional(),
+    });
+
+const ipCidrRegex = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/;
+
+export const createTrustedIpSchema = z.object({
+  ip: z.string().regex(ipCidrRegex, 'IP o CIDR inválido. Ejemplo: 192.168.1.100 o 10.0.0.0/8'),
+  label: z.string().max(255).optional(),
+  enabled: z.boolean().optional(),
+});
+
+export const updateTrustedIpSchema = z.object({
+  ip: z.string().regex(ipCidrRegex, 'IP o CIDR inválido.').optional(),
+  label: z.string().max(255).nullable().optional(),
+  enabled: z.boolean().optional(),
 });
 
 /** Envuelve zValidator('json', schema) traduciendo errores a ValidationError. */

@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { httpInstrumentationMiddleware } from '@hono/otel';
-import { AppDependencies, adminRoutes, authRoutes, healthRoutes } from './routes';
+import { AppDependencies, adminRoutes, authRoutes, healthRoutes, internalRoutes, trustedIpsRoutes } from './routes';
 import { errorHandler } from './middlewares';
 
 /**
@@ -25,13 +25,15 @@ export function createApp(deps: AppDependencies): Hono {
     cors({
       origin: deps.corsOrigin,
       allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowHeaders: ['Content-Type', 'Authorization'],
+      allowHeaders: ['Content-Type', 'Authorization', 'X-Internal-Secret'],
     }),
   );
 
   app.route('/', healthRoutes());
   app.route('/auth', authRoutes(deps));
   app.route('/', adminRoutes(deps));
+  app.route('/', trustedIpsRoutes(deps));
+  app.route('/', internalRoutes(deps));
 
   app.onError(errorHandler);
   app.notFound((c) => c.json({ code: 'NOT_FOUND', message: 'Recurso no encontrado.' }, 404));

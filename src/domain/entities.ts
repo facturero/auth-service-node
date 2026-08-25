@@ -109,6 +109,12 @@ export class Credential {
     return this.props.passwordHash !== null;
   }
 
+  /** Reemplaza el hash de contraseña (reset por un admin con password:change). */
+  setPassword(passwordHash: string): void {
+    this.props.passwordHash = passwordHash;
+    this.props.updatedAt = new Date();
+  }
+
   isActive(): boolean {
     return this.props.status === 'active';
   }
@@ -238,6 +244,184 @@ export class RefreshToken {
   }
 
   toPersistence(): RefreshTokenProps {
+    return { ...this.props };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PosDevice: identidad de un terminal POS. NO es un usuario humano: no tiene
+// fila en `users` ni credencial con contraseña. Existe solo para que el POS
+// pueda obtener sus tokens y sincronizar en background.
+// ---------------------------------------------------------------------------
+export interface PosDeviceProps {
+  id: string;
+  emissionPointId: string;
+  organizationId: string;
+  label: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export class PosDevice {
+  private constructor(private props: PosDeviceProps) {}
+
+    static create(params: {
+      id?: string;
+      emissionPointId: string;
+      organizationId: string;
+      label?: string | null;
+  }): PosDevice {
+      const now = new Date();
+      return new PosDevice({
+        // El id del dispositivo ES el deviceId del terminal (su UUID estable).
+        id: params.id ?? randomUUID(),
+        emissionPointId: params.emissionPointId,
+        organizationId: params.organizationId,
+        label: params.label ?? null,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+  static fromPersistence(props: PosDeviceProps): PosDevice {
+    return new PosDevice({ ...props });
+  }
+
+  get id(): string {
+    return this.props.id;
+  }
+  get emissionPointId(): string {
+    return this.props.emissionPointId;
+  }
+  get organizationId(): string {
+    return this.props.organizationId;
+  }
+  get label(): string | null {
+    return this.props.label;
+  }
+
+  toPersistence(): PosDeviceProps {
+    return { ...this.props };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// DeviceRefreshToken: refresh token del terminal POS (mismo patrón que
+// RefreshToken, pero ligado a un PosDevice en vez de a una Credential).
+// ---------------------------------------------------------------------------
+export interface DeviceRefreshTokenProps {
+  id: string;
+  posDeviceId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  replacedBy: string | null;
+  createdAt: Date;
+}
+
+export class DeviceRefreshToken {
+  private constructor(private props: DeviceRefreshTokenProps) {}
+
+  static issue(params: {
+    posDeviceId: string;
+    tokenHash: string;
+    expiresAt: Date;
+  }): DeviceRefreshToken {
+    return new DeviceRefreshToken({
+      id: randomUUID(),
+      posDeviceId: params.posDeviceId,
+      tokenHash: params.tokenHash,
+      expiresAt: params.expiresAt,
+      revokedAt: null,
+      replacedBy: null,
+      createdAt: new Date(),
+    });
+  }
+
+  static fromPersistence(props: DeviceRefreshTokenProps): DeviceRefreshToken {
+    return new DeviceRefreshToken({ ...props });
+  }
+
+  get id(): string {
+    return this.props.id;
+  }
+  get posDeviceId(): string {
+    return this.props.posDeviceId;
+  }
+  get revokedAt(): Date | null {
+    return this.props.revokedAt;
+  }
+
+  isActive(now: Date = new Date()): boolean {
+    return this.props.revokedAt === null && this.props.expiresAt.getTime() > now.getTime();
+  }
+
+  revoke(replacedById: string | null = null): void {
+    if (this.props.revokedAt === null) {
+      this.props.revokedAt = new Date();
+    }
+    this.props.replacedBy = replacedById;
+  }
+
+  toPersistence(): DeviceRefreshTokenProps {
+    return { ...this.props };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PasswordResetToken: token de un solo uso para restablecer la contraseña de
+// un usuario. Se genera por el flujo "restaurar contraseña" (el administrador
+// dispara un correo con el link) y se consume al establecer la nueva clave.
+// ---------------------------------------------------------------------------
+export interface PasswordResetTokenProps {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  consumedAt: Date | null;
+  createdAt: Date;
+}
+
+export class PasswordResetToken {
+  private constructor(private props: PasswordResetTokenProps) {}
+
+  static issue(params: { userId: string; tokenHash: string; expiresAt: Date }): PasswordResetToken {
+    return new PasswordResetToken({
+      id: randomUUID(),
+      userId: params.userId,
+      tokenHash: params.tokenHash,
+      expiresAt: params.expiresAt,
+      consumedAt: null,
+      createdAt: new Date(),
+    });
+  }
+
+  static fromPersistence(props: PasswordResetTokenProps): PasswordResetToken {
+    return new PasswordResetToken({ ...props });
+  }
+
+  get id(): string {
+    return this.props.id;
+  }
+  get userId(): string {
+    return this.props.userId;
+  }
+  get consumedAt(): Date | null {
+    return this.props.consumedAt;
+  }
+
+  /** Válido si aún no fue consumido y no expiró. */
+  isValid(now: Date = new Date()): boolean {
+    return this.props.consumedAt === null && this.props.expiresAt.getTime() > now.getTime();
+  }
+
+  consume(): void {
+    if (this.props.consumedAt === null) {
+      this.props.consumedAt = new Date();
+    }
+  }
+
+  toPersistence(): PasswordResetTokenProps {
     return { ...this.props };
   }
 }

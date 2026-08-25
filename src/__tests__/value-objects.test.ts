@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { Email, UserId } from '../domain/value-objects';
-import { InvalidEmailError } from '../domain/errors';
+import { Email, UserId, Username } from '../domain/value-objects';
+import { InvalidEmailError, InvalidUsernameError } from '../domain/errors';
 
 describe('Email', () => {
   it('creates a valid email', () => {
@@ -70,5 +70,31 @@ describe('UserId', () => {
     const val = '550e8400-e29b-41d4-a716-446655440000';
     const id = UserId.fromString(val);
     expect(id.toString()).toBe(val);
+  });
+});
+
+describe('Username', () => {
+  it('accepts letters and numbers, normalizes to uppercase', () => {
+    expect(Username.create('abc1234').value).toBe('ABC1234');
+    expect(Username.create('ABC1234').value).toBe('ABC1234');
+    expect(Username.create('  xY987z  ').value).toBe('XY987Z');
+  });
+
+  it('rejects symbols', () => {
+    for (const bad of ['ABC-123', 'abc_12', 'abc.12', 'ab c12', 'ABC@12', 'ABC$12', 'ABC/12']) {
+      expect(() => Username.create(bad), `should reject ${bad}`).toThrow(InvalidUsernameError);
+    }
+  });
+
+  it('rejects empty and usernames longer than 7 characters', () => {
+    expect(() => Username.create('')).toThrow(InvalidUsernameError);
+    expect(() => Username.create('ABCDEFGH')).toThrow(InvalidUsernameError);
+  });
+
+  it('equals and toString work', () => {
+    const a = Username.create('abc1234');
+    const b = Username.create('ABC1234');
+    expect(a.equals(b)).toBe(true);
+    expect(a.toString()).toBe('ABC1234');
   });
 });

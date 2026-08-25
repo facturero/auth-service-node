@@ -54,6 +54,14 @@ export class InvalidIdentificationError extends AppError {
   }
 }
 
+export class InvalidUsernameError extends AppError {
+  readonly code = 'INVALID_USERNAME';
+  readonly httpStatus = 422;
+  constructor(message = 'El nombre de usuario solo puede contener letras y números.') {
+    super(message);
+  }
+}
+
 export class IdentificationAlreadyExistsError extends AppError {
   readonly code = 'IDENTIFICATION_ALREADY_EXISTS';
   readonly httpStatus = 409;
@@ -147,6 +155,12 @@ export class InvalidInviteTokenError extends AppError {
   constructor(message = 'El enlace de invitación no es válido.') { super(message); }
 }
 
+export class InvalidResetTokenError extends AppError {
+  readonly code = 'INVALID_RESET_TOKEN';
+  readonly httpStatus = 400;
+  constructor(message = 'El enlace de restablecimiento no es válido o ha expirado.') { super(message); }
+}
+
 export class MembershipNotInvitedError extends AppError {
   readonly code = 'MEMBERSHIP_NOT_INVITED';
   readonly httpStatus = 409;
@@ -163,4 +177,16 @@ export class CannotModifySystemRoleError extends AppError {
   readonly code = 'CANNOT_MODIFY_SYSTEM_ROLE';
   readonly httpStatus = 403;
   constructor(message = 'Los roles de sistema no pueden ser modificados.') { super(message); }
+}
+
+export class OrganizationNotFoundError extends AppError {
+  readonly code = 'ORGANIZATION_NOT_FOUND';
+  readonly httpStatus = 404;
+  constructor(message = 'Organización no encontrada.') { super(message); }
+}
+
+export class InvalidInternalSecretError extends AppError {
+  readonly code = 'INVALID_INTERNAL_SECRET';
+  readonly httpStatus = 401;
+  constructor(message = 'Secreto de servicio inválido.') { super(message); }
 }

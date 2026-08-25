@@ -1,24 +1,33 @@
 import { createHash, randomBytes } from 'node:crypto';
 import {
   Credential,
+  DeviceRefreshToken,
   OAuthAccount,
   OAuthProvider,
+  PasswordResetToken,
+  PosDevice,
   RefreshToken,
 } from '../domain/entities';
-import { User, Organization, Role, Permission, Membership, UserRole } from '../domain/rbac';
+import { User, Organization, Role, Permission, Membership, UserRole, UserEstablishment } from '../domain/rbac';
 import {
   CredentialRepository,
+  DeviceRefreshTokenRepository,
   DomainEvent,
   MembershipRepository,
   OAuthAccountRepository,
   OrganizationRepository,
   OutboxRepository,
+  PasswordResetTokenRepository,
   PermissionRepository,
+  PosDeviceRepository,
   RefreshTokenRepository,
   Repositories,
   RoleRepository,
   UserRepository,
   UserRoleRepository,
+  UserEstablishmentRepository,
+  TrustedIp,
+  TrustedIpRepository,
 } from '../domain/repositories';
 import {
   AccessContext,
@@ -101,6 +110,76 @@ export class InMemoryRefreshTokenRepository implements RefreshTokenRepository {
   }
 
   async save(token: RefreshToken): Promise<void> {
+    this.store.set(token.id, token);
+  }
+
+  async revokeAllByCredentialId(credentialId: string): Promise<void> {
+    for (const t of this.store.values()) {
+      const props = t.toPersistence();
+      if (props.credentialId === credentialId && props.revokedAt === null) {
+        t.revoke();
+      }
+    }
+  }
+
+  clear(): void {
+    this.store.clear();
+  }
+}
+
+export class InMemoryPosDeviceRepository implements PosDeviceRepository {
+  private store = new Map<string, PosDevice>();
+
+  async findById(id: string): Promise<PosDevice | null> {
+    return this.store.get(id) ?? null;
+  }
+
+  async findByEmissionPointId(emissionPointId: string): Promise<PosDevice | null> {
+    for (const d of this.store.values()) {
+      if (d.emissionPointId === emissionPointId) return d;
+    }
+    return null;
+  }
+
+  async save(device: PosDevice): Promise<void> {
+    this.store.set(device.id, device);
+  }
+
+  clear(): void {
+    this.store.clear();
+  }
+}
+
+export class InMemoryDeviceRefreshTokenRepository implements DeviceRefreshTokenRepository {
+  private store = new Map<string, DeviceRefreshToken>();
+
+  async findByHash(tokenHash: string): Promise<DeviceRefreshToken | null> {
+    for (const t of this.store.values()) {
+      if (t.toPersistence().tokenHash === tokenHash) return t;
+    }
+    return null;
+  }
+
+  async save(token: DeviceRefreshToken): Promise<void> {
+    this.store.set(token.id, token);
+  }
+
+  clear(): void {
+    this.store.clear();
+  }
+}
+
+export class InMemoryPasswordResetTokenRepository implements PasswordResetTokenRepository {
+  private store = new Map<string, PasswordResetToken>();
+
+  async findByHash(tokenHash: string): Promise<PasswordResetToken | null> {
+    for (const t of this.store.values()) {
+      if (t.toPersistence().tokenHash === tokenHash) return t;
+    }
+    return null;
+  }
+
+  async save(token: PasswordResetToken): Promise<void> {
     this.store.set(token.id, token);
   }
 
@@ -292,10 +371,69 @@ export class InMemoryUserRoleRepository implements UserRoleRepository {
   clear(): void { this.store.clear(); }
 }
 
+export class InMemoryUserEstablishmentRepository implements UserEstablishmentRepository {
+  private store = new Map<string, UserEstablishment>();
+
+  async listByUser(userId: string): Promise<UserEstablishment[]> {
+    return Array.from(this.store.values())
+      .filter((ue) => ue.userId === userId);
+  }
+
+  async listUserIdsByEstablishment(establishmentId: string): Promise<string[]> {
+    return Array.from(this.store.values())
+      .filter((ue) => ue.establishmentId === establishmentId)
+      .map((ue) => ue.userId);
+  }
+
+  async replaceForUser(userId: string, establishmentIds: string[]): Promise<void> {
+    for (const [k, v] of this.store) {
+      if (v.userId === userId) this.store.delete(k);
+    }
+    for (const establishmentId of establishmentIds) {
+      const ue = UserEstablishment.assign({ userId, establishmentId });
+      this.store.set(ue.id, ue);
+    }
+  }
+
+  clear(): void { this.store.clear(); }
+}
+
+export class InMemoryTrustedIpRepository implements TrustedIpRepository {
+  private store = new Map<string, TrustedIp>();
+
+  async findAll(): Promise<TrustedIp[]> {
+    return Array.from(this.store.values());
+  }
+  async findEnabled(): Promise<TrustedIp[]> {
+    return Array.from(this.store.values()).filter((e) => e.enabled);
+  }
+  async findByIp(ip: string): Promise<TrustedIp | null> {
+    return Array.from(this.store.values()).find((e) => e.ip === ip) ?? null;
+  }
+  async create(data: Omit<TrustedIp, 'created_at' | 'updated_at'>): Promise<TrustedIp> {
+    const now = new Date();
+    const entry: TrustedIp = { ...data, created_at: now, updated_at: now };
+    this.store.set(entry.id, entry);
+    return entry;
+  }
+  async update(id: string, data: Partial<Pick<TrustedIp, 'ip' | 'label' | 'enabled'>>): Promise<TrustedIp | null> {
+    const entry = this.store.get(id);
+    if (!entry) return null;
+    Object.assign(entry, data, { updated_at: new Date() });
+    return entry;
+  }
+  async delete(id: string): Promise<boolean> {
+    return this.store.delete(id);
+  }
+}
+
 export class InMemoryUnitOfWork implements UnitOfWork {
   readonly credentials: InMemoryCredentialRepository;
   readonly oauthAccounts: InMemoryOAuthAccountRepository;
   readonly refreshTokens: InMemoryRefreshTokenRepository;
+  readonly posDevices: InMemoryPosDeviceRepository;
+  readonly deviceRefreshTokens: InMemoryDeviceRefreshTokenRepository;
+  readonly passwordResetTokens: InMemoryPasswordResetTokenRepository;
   readonly outbox: InMemoryOutboxRepository;
   readonly users: InMemoryUserRepository;
   readonly organizations: InMemoryOrganizationRepository;
@@ -303,11 +441,16 @@ export class InMemoryUnitOfWork implements UnitOfWork {
   readonly permissions: InMemoryPermissionRepository;
   readonly memberships: InMemoryMembershipRepository;
   readonly userRoles: InMemoryUserRoleRepository;
+  readonly userEstablishments: InMemoryUserEstablishmentRepository;
+  readonly trustedIps: InMemoryTrustedIpRepository;
 
   constructor(repos?: {
     credentials?: InMemoryCredentialRepository;
     oauthAccounts?: InMemoryOAuthAccountRepository;
     refreshTokens?: InMemoryRefreshTokenRepository;
+    posDevices?: InMemoryPosDeviceRepository;
+    deviceRefreshTokens?: InMemoryDeviceRefreshTokenRepository;
+    passwordResetTokens?: InMemoryPasswordResetTokenRepository;
     outbox?: InMemoryOutboxRepository;
     users?: InMemoryUserRepository;
     organizations?: InMemoryOrganizationRepository;
@@ -315,10 +458,15 @@ export class InMemoryUnitOfWork implements UnitOfWork {
     permissions?: InMemoryPermissionRepository;
     memberships?: InMemoryMembershipRepository;
     userRoles?: InMemoryUserRoleRepository;
+    userEstablishments?: InMemoryUserEstablishmentRepository;
+    trustedIps?: InMemoryTrustedIpRepository;
   }) {
     this.credentials = repos?.credentials ?? new InMemoryCredentialRepository();
     this.oauthAccounts = repos?.oauthAccounts ?? new InMemoryOAuthAccountRepository();
     this.refreshTokens = repos?.refreshTokens ?? new InMemoryRefreshTokenRepository();
+    this.posDevices = repos?.posDevices ?? new InMemoryPosDeviceRepository();
+    this.deviceRefreshTokens = repos?.deviceRefreshTokens ?? new InMemoryDeviceRefreshTokenRepository();
+    this.passwordResetTokens = repos?.passwordResetTokens ?? new InMemoryPasswordResetTokenRepository();
     this.outbox = repos?.outbox ?? new InMemoryOutboxRepository();
     this.users = repos?.users ?? new InMemoryUserRepository();
     this.organizations = repos?.organizations ?? new InMemoryOrganizationRepository();
@@ -326,6 +474,8 @@ export class InMemoryUnitOfWork implements UnitOfWork {
     this.permissions = repos?.permissions ?? new InMemoryPermissionRepository();
     this.memberships = repos?.memberships ?? new InMemoryMembershipRepository();
     this.userRoles = repos?.userRoles ?? new InMemoryUserRoleRepository();
+    this.userEstablishments = repos?.userEstablishments ?? new InMemoryUserEstablishmentRepository();
+    this.trustedIps = repos?.trustedIps ?? new InMemoryTrustedIpRepository();
   }
 
   async execute<T>(work: (repos: Repositories) => Promise<T>): Promise<T> {
@@ -333,6 +483,9 @@ export class InMemoryUnitOfWork implements UnitOfWork {
       credentials: this.credentials,
       oauthAccounts: this.oauthAccounts,
       refreshTokens: this.refreshTokens,
+      posDevices: this.posDevices,
+      deviceRefreshTokens: this.deviceRefreshTokens,
+      passwordResetTokens: this.passwordResetTokens,
       outbox: this.outbox,
       users: this.users,
       organizations: this.organizations,
@@ -340,6 +493,8 @@ export class InMemoryUnitOfWork implements UnitOfWork {
       permissions: this.permissions,
       memberships: this.memberships,
       userRoles: this.userRoles,
+      userEstablishments: this.userEstablishments,
+      trustedIps: this.trustedIps,
     });
   }
 
@@ -347,6 +502,9 @@ export class InMemoryUnitOfWork implements UnitOfWork {
     this.credentials.clear();
     this.oauthAccounts.clear();
     this.refreshTokens.clear();
+    this.posDevices.clear();
+    this.deviceRefreshTokens.clear();
+    this.passwordResetTokens.clear();
     this.outbox.clear();
     this.users.clear();
     this.organizations.clear();
@@ -354,6 +512,7 @@ export class InMemoryUnitOfWork implements UnitOfWork {
     this.permissions.clear();
     this.memberships.clear();
     this.userRoles.clear();
+    this.userEstablishments.clear();
   }
 }
 
@@ -444,6 +603,9 @@ export function buildInMemoryRepos(): Repositories {
     credentials: new InMemoryCredentialRepository(),
     oauthAccounts: new InMemoryOAuthAccountRepository(),
     refreshTokens: new InMemoryRefreshTokenRepository(),
+    posDevices: new InMemoryPosDeviceRepository(),
+    deviceRefreshTokens: new InMemoryDeviceRefreshTokenRepository(),
+    passwordResetTokens: new InMemoryPasswordResetTokenRepository(),
     outbox: new InMemoryOutboxRepository(),
     users: new InMemoryUserRepository(),
     organizations: new InMemoryOrganizationRepository(),
@@ -451,5 +613,7 @@ export function buildInMemoryRepos(): Repositories {
     permissions: new InMemoryPermissionRepository(),
     memberships: new InMemoryMembershipRepository(),
     userRoles: new InMemoryUserRoleRepository(),
+    userEstablishments: new InMemoryUserEstablishmentRepository(),
+    trustedIps: new InMemoryTrustedIpRepository(),
   };
 }

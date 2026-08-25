@@ -56,6 +56,16 @@ export interface SessionOutput {
   user: UserSummary;
 }
 
+/** Sesión de un terminal POS (sin usuario humano detrás). */
+export interface DeviceSessionOutput {
+  accessToken: string;
+  tokenType: 'Bearer';
+  expiresIn: number;
+  refreshToken: string;
+  organizationId: string;
+  emissionPointId: string;
+}
+
 export interface MeOutput {
   id: string;
   email: string;

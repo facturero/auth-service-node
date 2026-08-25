@@ -27,9 +27,14 @@ import { CreateRoleUseCase } from './application/use-cases/create-role';
 import { UpdateRolePermissionsUseCase } from './application/use-cases/update-role-permissions';
 import { ListPermissionsUseCase } from './application/use-cases/list-permissions';
 import { AcceptInviteUseCase } from './application/use-cases/accept-invite';
+import { ResetPasswordUseCase } from './application/use-cases/reset-password';
+import { RequestPasswordResetUseCase } from './application/use-cases/request-password-reset';
+import { ProvisionDeviceAccountUseCase } from './application/use-cases/provision-device-account';
+import { UpdateUserEstablishmentsUseCase } from './application/use-cases/update-user-establishments';
 import { OutboxRelay } from './infrastructure/messaging/relay';
 import { OrgUpdatedConsumer } from './infrastructure/messaging/consumer';
 import { SimpleInviteTokenService } from './infrastructure/security/invite-token-service';
+import { SimplePasswordResetLinkService } from './infrastructure/security/password-reset-link-service';
 import { createApp } from './interface/http/app';
 
 /**
@@ -52,6 +57,7 @@ async function main(): Promise<void> {
   // Servicios
   const seedOrgRoles = new SeedOrganizationRolesUseCase(uow);
   const inviteTokenService = new SimpleInviteTokenService(config.FRONTEND_URL);
+  const passwordResetLinkService = new SimplePasswordResetLinkService(config.FRONTEND_URL);
 
   const app = createApp({
     useCases: {
@@ -69,19 +75,25 @@ async function main(): Promise<void> {
       getMe: new GetMeUseCase(repos.credentials, repos.users, repos.organizations),
       switchOrg: new SwitchOrganizationUseCase(uow, tokenService, accessContext),
       completeProfile: new CompleteProfileUseCase(uow, tokenService, accessContext, seedOrgRoles, repos.refreshTokens),
-      listUsers: new ListUsersUseCase(repos.users, repos.userRoles, repos.roles, repos.organizations),
+      listUsers: new ListUsersUseCase(repos.users, repos.userRoles, repos.roles, repos.organizations, repos.credentials, repos.userEstablishments),
       inviteUser: new InviteUserUseCase(uow, inviteTokenService),
       assignRole: new AssignRoleUseCase(uow),
       disableUser: new DisableUserUseCase(uow),
+      updateUserEstablishments: new UpdateUserEstablishmentsUseCase(uow),
       listRoles: new ListRolesUseCase(repos.roles),
       createRole: new CreateRoleUseCase(uow),
       updateRolePermissions: new UpdateRolePermissionsUseCase(uow),
       listPermissions: new ListPermissionsUseCase(repos.permissions),
       acceptInvite: new AcceptInviteUseCase(uow, hasher, tokenService, accessContext, repos.refreshTokens),
+      resetPassword: new ResetPasswordUseCase(uow, hasher, tokenService, accessContext, repos.refreshTokens),
+      requestPasswordReset: new RequestPasswordResetUseCase(uow, passwordResetLinkService),
+      provisionDeviceAccount: new ProvisionDeviceAccountUseCase(uow, tokenService),
     },
     tokenService,
     accessContext,
     corsOrigin: config.CORS_ORIGIN,
+    internalSecret: config.INTERNAL_SERVICE_SECRET,
+    trustedIpsRepository: repos.trustedIps,
   });
 
   // Infraestructura de mensajería (opcional, requiere RABBITMQ_URL)

@@ -7,6 +7,7 @@ export interface InviteUserInput {
   organizationId: string;
   email: string;
   roleIds: string[];
+  establishmentIds?: string[];
 }
 
 export class InviteUserUseCase {
@@ -67,6 +68,11 @@ export class InviteUserUseCase {
       }
 
       await repos.users.incrementPermissionsVersion(user.id);
+
+      // Asignación de establecimientos donde puede operar el usuario.
+      if (input.establishmentIds && input.establishmentIds.length > 0) {
+        await repos.userEstablishments.replaceForUser(user.id, input.establishmentIds);
+      }
 
       const org = await repos.organizations.findById(input.organizationId);
       const organizationName = org?.name ?? 'su organización';

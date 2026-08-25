@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { Username } from './value-objects';
 
 export type UserStatus = 'active' | 'disabled';
 export type MembershipStatus = 'active' | 'invited' | 'disabled';
@@ -9,6 +10,7 @@ export type MembershipStatus = 'active' | 'invited' | 'disabled';
 export interface UserProps {
   id: string;
   email: string;
+  username: string;
   identification: string | null;
   fullName: string | null;
   avatarFileId: string | null;
@@ -19,14 +21,35 @@ export interface UserProps {
   updatedAt: Date;
 }
 
+const USERNAME_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+const USERNAME_LENGTH = 7;
+
+/**
+ * Nombre de usuario de 7 caracteres (letras y números, en mayúsculas) con el
+ * que el usuario ingresa como operador/cajero en los POS. Se genera al crear
+ * la identidad; el POS lo baja vía GET /users y lo usa como `username` local.
+ * La unicidad la garantiza el índice único de la tabla `users`.
+ */
+export function generateUsername(): string {
+  let code = '';
+  for (let i = 0; i < USERNAME_LENGTH; i++) {
+    code += USERNAME_CHARS[Math.floor(Math.random() * USERNAME_CHARS.length)];
+  }
+  return code;
+}
+
 export class User {
   private constructor(private props: UserProps) {}
 
-  static create(params: { id?: string; email: string; identification?: string | null; fullName?: string | null }): User {
+  static create(params: { id?: string; email: string; username?: string; identification?: string | null; fullName?: string | null }): User {
     const now = new Date();
     return new User({
       id: params.id ?? randomUUID(),
       email: params.email,
+      // El username (si se pasa explícitamente) debe ser solo letras y números:
+      // el value object Username lo valida y normaliza a mayúsculas. Si no se
+      // pasa, se genera automáticamente con generateUsername().
+      username: Username.create(params.username ?? generateUsername()).value,
       identification: params.identification ?? null,
       fullName: params.fullName ?? null,
       avatarFileId: null,
@@ -44,6 +67,7 @@ export class User {
 
   get id(): string { return this.props.id; }
   get email(): string { return this.props.email; }
+  get username(): string { return this.props.username; }
   get identification(): string | null { return this.props.identification; }
   get fullName(): string | null { return this.props.fullName; }
   get avatarFileId(): string | null { return this.props.avatarFileId; }
@@ -316,6 +340,42 @@ export class UserRole {
   get createdAt(): Date { return this.props.createdAt; }
 
   toPersistence(): UserRoleProps {
+    return { ...this.props };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// UserEstablishment (asignación de establecimiento a un usuario)
+// ---------------------------------------------------------------------------
+export interface UserEstablishmentProps {
+  id: string;
+  userId: string;
+  establishmentId: string;
+  createdAt: Date;
+}
+
+export class UserEstablishment {
+  private constructor(private props: UserEstablishmentProps) {}
+
+  static assign(params: { userId: string; establishmentId: string }): UserEstablishment {
+    return new UserEstablishment({
+      id: randomUUID(),
+      userId: params.userId,
+      establishmentId: params.establishmentId,
+      createdAt: new Date(),
+    });
+  }
+
+  static fromPersistence(props: UserEstablishmentProps): UserEstablishment {
+    return new UserEstablishment({ ...props });
+  }
+
+  get id(): string { return this.props.id; }
+  get userId(): string { return this.props.userId; }
+  get establishmentId(): string { return this.props.establishmentId; }
+  get createdAt(): Date { return this.props.createdAt; }
+
+  toPersistence(): UserEstablishmentProps {
     return { ...this.props };
   }
 }

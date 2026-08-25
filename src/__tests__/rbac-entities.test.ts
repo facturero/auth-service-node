@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { User, Role, Permission, Membership, UserRole } from '../domain/rbac';
+import { InvalidUsernameError } from '../domain/errors';
 
 describe('User', () => {
   it('creates a user with default values', () => {
     const u = User.create({ id: 'u1', email: 'test@test.com' });
     expect(u.id).toBe('u1');
     expect(u.email).toBe('test@test.com');
+    expect(u.username).toMatch(/^[A-Z0-9]{7}$/);
     expect(u.identification).toBeNull();
     expect(u.isPlatformAdmin).toBe(false);
     expect(u.permissionsVersion).toBe(0);
@@ -16,10 +18,22 @@ describe('User', () => {
     expect(u.identification).toBe('12345678');
   });
 
+  it('normalizes an explicit username to uppercase letters/numbers', () => {
+    const u = User.create({ id: 'u4', email: 't@t.com', username: 'xy12z34' });
+    expect(u.username).toBe('XY12Z34');
+  });
+
+  it('rejects a username with symbols', () => {
+    expect(() => User.create({ id: 'u5', email: 't@t.com', username: 'ABC-123' })).toThrow(
+      InvalidUsernameError,
+    );
+  });
+
   it('fromPersistence restores custom values', () => {
     const u = User.fromPersistence({
         id: 'u1',
         email: 'test@test.com',
+        username: 'ABC1234',
         identification: null,
         fullName: null,
         avatarFileId: null,
@@ -46,6 +60,7 @@ describe('User', () => {
     const u = User.fromPersistence({
         id: 'u1',
         email: 'test@test.com',
+        username: 'ABC1234',
         identification: 'cedula:123',
         fullName: 'Test User',
         avatarFileId: null,
@@ -58,6 +73,7 @@ describe('User', () => {
     expect(u.toPersistence()).toEqual({
       id: 'u1',
       email: 'test@test.com',
+      username: 'ABC1234',
       identification: 'cedula:123',
       fullName: 'Test User',
       avatarFileId: null,

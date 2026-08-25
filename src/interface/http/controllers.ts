@@ -16,6 +16,10 @@ import { UpdateRolePermissionsUseCase } from '../../application/use-cases/update
 import { DisableUserUseCase } from '../../application/use-cases/disable-user';
 import { ListPermissionsUseCase } from '../../application/use-cases/list-permissions';
 import { AcceptInviteUseCase } from '../../application/use-cases/accept-invite';
+import { ResetPasswordUseCase } from '../../application/use-cases/reset-password';
+import { RequestPasswordResetUseCase } from '../../application/use-cases/request-password-reset';
+import { ProvisionDeviceAccountUseCase } from '../../application/use-cases/provision-device-account';
+import { UpdateUserEstablishmentsUseCase } from '../../application/use-cases/update-user-establishments';
 import { NoActiveOrganizationError } from '../../domain/errors';
 import { AuthVariables } from './middlewares';
 
@@ -118,11 +122,32 @@ export function acceptInviteController(useCase: AcceptInviteUseCase) {
   };
 }
 
+export function resetPasswordController(useCase: ResetPasswordUseCase) {
+  return async (c: Context) => {
+    const body = c.req.valid('json' as never) as { token: string; password: string };
+    const result = await useCase.execute({ ...body, ...clientMeta(c) });
+    return c.json(result, 200);
+  };
+}
+
+export function requestPasswordResetController(useCase: RequestPasswordResetUseCase) {
+  return async (c: Context<{ Variables: AuthVariables }>) => {
+    const orgId = c.get('orgId');
+    if (!orgId) throw new NoActiveOrganizationError();
+    const userId = c.req.param('id') ?? '';
+    if (!userId) return c.json({ code: 'MISSING_PARAM', message: 'userId es obligatorio.' }, 400);
+    await useCase.execute({ organizationId: orgId, userId, actorId: c.get('userId') });
+    return c.body(null, 204);
+  };
+}
+
 export function listUsersController(useCase: ListUsersUseCase) {
   return async (c: Context<{ Variables: AuthVariables }>) => {
     const orgId = c.get('orgId');
     if (!orgId) throw new NoActiveOrganizationError();
-    const result = await useCase.execute(orgId);
+    const canViewPasswords = c.get('permissions').includes('password:view');
+    const establishmentId = c.req.query('establishmentId') || undefined;
+    const result = await useCase.execute(orgId, canViewPasswords, establishmentId);
     return c.json(result, 200);
   };
 }
@@ -156,6 +181,18 @@ export function disableUserController(useCase: DisableUserUseCase) {
     const userId = c.req.param('id') ?? '';
     if (!userId) return c.json({ code: 'MISSING_PARAM', message: 'userId es obligatorio.' }, 400);
     await useCase.execute({ organizationId: orgId, userId, actorId: c.get('userId') });
+    return c.body(null, 204);
+  };
+}
+
+export function updateUserEstablishmentsController(useCase: UpdateUserEstablishmentsUseCase) {
+  return async (c: Context<{ Variables: AuthVariables }>) => {
+    const orgId = c.get('orgId');
+    if (!orgId) throw new NoActiveOrganizationError();
+    const userId = c.req.param('id') ?? '';
+    if (!userId) return c.json({ code: 'MISSING_PARAM', message: 'userId es obligatorio.' }, 400);
+    const body = c.req.valid('json' as never) as { establishmentIds: string[] };
+    await useCase.execute({ organizationId: orgId, userId, establishmentIds: body.establishmentIds });
     return c.body(null, 204);
   };
 }
@@ -200,5 +237,77 @@ export function listPermissionsController(useCase: ListPermissionsUseCase) {
   return async (c: Context) => {
     const result = await useCase.execute();
     return c.json(result, 200);
+  };
+}
+
+// Interno — protegido por requireInternalSecret, no por JWT de usuario.
+  export function provisionDeviceAccountController(useCase: ProvisionDeviceAccountUseCase) {
+    return async (c: Context) => {
+        const body = c.req.valid('json' as never) as {
+          organizationId: string;
+          emissionPointId: string;
+          deviceId: string;
+          label?: string;
+        };
+      const result = await useCase.execute(body);
+      return c.json(result, 200);
+    };
+  }
+
+// ── Trusted IPs ──
+
+import { TrustedIpRepository } from '../../domain/repositories';
+
+export function listTrustedIpsController(repo: TrustedIpRepository) {
+  return async (c: Context) => {
+    const ips = await repo.findAll();
+    return c.json(ips, 200);
+  };
+}
+
+export function createTrustedIpController(repo: TrustedIpRepository) {
+  return async (c: Context) => {
+    const body = c.req.valid('json' as never) as { ip: string; label?: string; enabled?: boolean };
+    const existing = await repo.findByIp(body.ip);
+    if (existing) {
+      return c.json({ code: 'IP_EXISTS', message: `La IP ${body.ip} ya está registrada.` }, 409);
+    }
+    const id = crypto.randomUUID();
+    const entry = await repo.create({
+      id,
+      ip: body.ip,
+      label: body.label ?? null,
+      enabled: body.enabled ?? true,
+    });
+    return c.json(entry, 201);
+  };
+}
+
+export function deleteTrustedIpController(repo: TrustedIpRepository) {
+  return async (c: Context) => {
+    const id = c.req.param('id');
+    if (!id) return c.json({ code: 'MISSING_PARAM', message: 'id es obligatorio.' }, 400);
+    const deleted = await repo.delete(id);
+    if (!deleted) return c.json({ code: 'NOT_FOUND', message: 'IP no encontrada.' }, 404);
+    return c.body(null, 204);
+  };
+}
+
+export function updateTrustedIpController(repo: TrustedIpRepository) {
+  return async (c: Context) => {
+    const id = c.req.param('id');
+    if (!id) return c.json({ code: 'MISSING_PARAM', message: 'id es obligatorio.' }, 400);
+    const body = c.req.valid('json' as never) as { ip?: string; label?: string; enabled?: boolean };
+    const updated = await repo.update(id, body);
+    if (!updated) return c.json({ code: 'NOT_FOUND', message: 'IP no encontrada.' }, 404);
+    return c.json(updated, 200);
+  };
+}
+
+/** Endpoint público (sin auth) para que el gateway consulte las IPs habilitadas. */
+export function listEnabledTrustedIpsController(repo: TrustedIpRepository) {
+  return async (c: Context) => {
+    const ips = await repo.findEnabled();
+    return c.json(ips, 200);
   };
 }
