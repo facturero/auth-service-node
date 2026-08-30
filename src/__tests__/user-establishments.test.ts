@@ -53,7 +53,9 @@ describe('user_establishments (Fase 2)', () => {
     await uow.userEstablishments.replaceForUser(userB.id, [establishmentB]);
 
     const items = await listUsers.execute(orgId, false, establishmentA);
-    expect(items.map((i) => i.email)).toEqual(['a@test.com']);
+    // Los admins (rol Administrador) se incluyen siempre al filtrar por
+    // establecimiento: el POS necesita sincronizarlos aunque no estén asignados.
+    expect(items.map((i) => i.email)).toEqual(['a@test.com', 'b@test.com']);
   });
 
   it('listUsers sin filtro devuelve todos, con sus asignaciones', async () => {
