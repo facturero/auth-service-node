@@ -31,8 +31,8 @@ import { ResetPasswordUseCase } from './application/use-cases/reset-password';
 import { RequestPasswordResetUseCase } from './application/use-cases/request-password-reset';
 import { ProvisionDeviceAccountUseCase } from './application/use-cases/provision-device-account';
 import { UpdateUserEstablishmentsUseCase } from './application/use-cases/update-user-establishments';
-import { OutboxRelay } from './infrastructure/messaging/relay';
-import { OrgUpdatedConsumer } from './infrastructure/messaging/consumer';
+import { OutboxRelay, InboxConsumer } from '@facturero/outbox-relay';
+import { orgUpdatedHandler } from './infrastructure/messaging/consumer';
 import { SimpleInviteTokenService } from './infrastructure/security/invite-token-service';
 import { SimplePasswordResetLinkService } from './infrastructure/security/password-reset-link-service';
 import { createApp } from './interface/http/app';
@@ -98,11 +98,22 @@ async function main(): Promise<void> {
 
   // Infraestructura de mensajería (opcional, requiere RABBITMQ_URL)
   if (config.RABBITMQ_URL) {
-    const relay = new OutboxRelay();
-    await relay.start(config.RABBITMQ_URL);
+    const relay = new OutboxRelay({
+      sequelize,
+      rabbitmqUrl: config.RABBITMQ_URL,
+      exchange: 'crm.events',
+    });
+    await relay.start();
 
-    const consumer = new OrgUpdatedConsumer();
-    await consumer.start(config.RABBITMQ_URL);
+    const consumer = new InboxConsumer({
+      sequelize,
+      rabbitmqUrl: config.RABBITMQ_URL,
+      exchange: 'crm.events',
+      queue: 'auth-service.org.updated',
+      bindings: ['organization.org.updated'],
+      handlers: [orgUpdatedHandler],
+    });
+    await consumer.start();
 
     // eslint-disable-next-line no-console
     console.log('[messaging] outbox relay + org.updated consumer iniciados');
