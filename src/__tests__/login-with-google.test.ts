@@ -58,6 +58,16 @@ describe('LoginWithGoogleUseCase', () => {
     expect(result.isNewUser).toBe(false);
   });
 
+  it('still reports needsOrg on a returning login if the account never got an organization', async () => {
+    // First login: sin identification, no crea organización -> needsOrg true.
+    await useCase.execute({ idToken: 'valid-token' });
+
+    // Segundo login (cuenta ya vinculada, sigue sin org): no debe hardcodear needsOrg en false.
+    const result = await useCase.execute({ idToken: 'valid-token' });
+
+    expect(result.needsOrg).toBe(true);
+  });
+
   it('links to existing credential with same email', async () => {
     const email = Email.create('googleuser@gmail.com');
     const existing = Credential.createWithPassword({

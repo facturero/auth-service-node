@@ -44,7 +44,7 @@ export class LoginWithGoogleUseCase {
           credential,
           organizationId: undefined as string | undefined,
           isNewUser: false,
-          needsOrg: false,
+          needsOrg: undefined as boolean | undefined,
         };
       }
 
@@ -83,12 +83,19 @@ export class LoginWithGoogleUseCase {
           credential: existing,
           organizationId: undefined as string | undefined,
           isNewUser: false,
-          needsOrg: false,
+          needsOrg: undefined as boolean | undefined,
         };
       }
 
       return this.createLinkedAccount(repos, email, profile.sub, profile.emailVerified, input);
     });
+
+    // Una cuenta ya vinculada a Google puede seguir sin organización si el
+    // usuario abandonó el completar-perfil tras el primer login: needsOrg no
+    // puede asumirse false solo porque la cuenta no es nueva.
+    const needsOrg = result.needsOrg ?? (
+      await this.accessContext.resolve(result.credential.userId, result.organizationId ?? null)
+    ).orgId === null;
 
     return issueSession({
       credential: result.credential,
@@ -96,7 +103,7 @@ export class LoginWithGoogleUseCase {
       refreshTokens: this.refreshTokens,
       authProvider: 'google',
       isNewUser: result.isNewUser,
-      needsOrg: result.needsOrg,
+      needsOrg,
       organizationId: result.organizationId,
       accessContext: this.accessContext,
       preferredOrgId: result.organizationId ?? null,
