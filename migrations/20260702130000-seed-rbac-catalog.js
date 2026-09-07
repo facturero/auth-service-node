@@ -10,6 +10,7 @@ module.exports = {
       'establishment:create', 'establishment:read', 'establishment:update',
       'user:invite', 'user:read', 'user:update', 'user:assign_role',
       'tax_config:read', 'report:read', 'analytics:read',
+      'audit:read',
     ];
 
     // Stable UUIDs derived from code (v5 DNS-style namespace)
@@ -76,7 +77,7 @@ module.exports = {
         'invoice:create', 'invoice:read',
       ],
       [roleIds.contador]: [
-        'invoice:read', 'report:read', 'tax_config:read',
+        'invoice:read', 'report:read', 'tax_config:read', 'audit:read',
       ],
       [roleIds.soloLectura]: permissionCodes
         .filter(c => c.endsWith(':read'))
