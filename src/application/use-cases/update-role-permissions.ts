@@ -29,7 +29,13 @@ export class UpdateRolePermissionsUseCase {
         type: 'identity.role.updated',
         aggregateType: 'role',
         aggregateId: input.roleId,
-        payload: { roleId: input.roleId, organizationId: input.organizationId },
+        payload: {
+          roleId: input.roleId,
+          organizationId: input.organizationId,
+          // Incluye los usuarios afectados para que el gateway invalide la
+          // caché de pv y notifique por socket (BUG #9).
+          userIds,
+        },
         occurredAt: new Date(),
       });
     });

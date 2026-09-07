@@ -42,6 +42,8 @@ const schema = z.object({
   RABBITMQ_URL: z.string().optional(),
 
   INTERNAL_SERVICE_SECRET: z.string().min(1),
+
+  ORG_SERVICE_URL: z.string().default('http://organization-service:3002'),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -99,6 +101,7 @@ export interface AppConfig {
   FRONTEND_URL: string;
   RABBITMQ_URL?: string;
   INTERNAL_SERVICE_SECRET: string;
+  ORG_SERVICE_URL: string;
 }
 
 export const config: AppConfig = {
@@ -120,4 +123,5 @@ export const config: AppConfig = {
   FRONTEND_URL: env.FRONTEND_URL,
   RABBITMQ_URL: env.RABBITMQ_URL,
   INTERNAL_SERVICE_SECRET: env.INTERNAL_SERVICE_SECRET,
+  ORG_SERVICE_URL: env.ORG_SERVICE_URL,
 };

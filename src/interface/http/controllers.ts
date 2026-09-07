@@ -22,6 +22,7 @@ import { ProvisionDeviceAccountUseCase } from '../../application/use-cases/provi
 import { UpdateUserEstablishmentsUseCase } from '../../application/use-cases/update-user-establishments';
 import { NoActiveOrganizationError } from '../../domain/errors';
 import { AuthVariables } from './middlewares';
+import { AccessContextResolver } from '../../application/ports';
 
 /** Datos de cliente útiles para auditoría de sesión. */
 function clientMeta(c: Context): { userAgent: string | null; ip: string | null } {
@@ -253,6 +254,19 @@ export function listPermissionsController(useCase: ListPermissionsUseCase) {
       return c.json(result, 200);
     };
   }
+
+// Interno (BUG #9): el gateway consulta el pv actual del usuario para
+// compararlo con el del JWT y decidir si el token está stale (401 TOKEN_STALE).
+// Devuelve el contexto completo de acceso; el gateway solo usa `pv`.
+export function getAccessContextController(accessContext: AccessContextResolver) {
+  return async (c: Context) => {
+    const userId = c.req.param('userId') ?? '';
+    if (!userId) return c.json({ code: 'MISSING_PARAM', message: 'userId es obligatorio.' }, 400);
+    const preferredOrgId = c.req.query('orgId') ?? null;
+    const context = await accessContext.resolve(userId, preferredOrgId);
+    return c.json(context, 200);
+  };
+}
 
 // ── Trusted IPs ──
 

@@ -1,6 +1,6 @@
 import { Repositories } from '../../domain/repositories';
 import { UnitOfWork } from '../ports';
-import { UserNotFoundError, NotOrganizationMemberError, ForbiddenError } from '../../domain/errors';
+import { UserNotFoundError, NotOrganizationMemberError, ForbiddenError, LastAdminRemovalError } from '../../domain/errors';
 
 export interface DisableUserInput {
   organizationId: string;
@@ -31,6 +31,29 @@ export class DisableUserUseCase {
       const isActive = user.isActive();
 
       if (isActive) {
+        // Guard anti-lockout: no se puede desactivar a un ADMIN no-owner si es el
+        // último que queda. El owner ya está protegido arriba (org.ownerId) y
+        // no cuenta como admin de respaldo. Si el target NO es admin, la org
+        // no pierde ningún administrador y el disable sigue adelante
+        // (TEST-PLAN.md #6).
+        const adminRoles = await repos.roles.findByOrganization(input.organizationId);
+        const adminRoleIds = adminRoles.filter((r) => r.name === 'Administrador').map((r) => r.id);
+        let targetIsAdmin = false;
+        let otherActiveAdmins = 0;
+        for (const roleId of adminRoleIds) {
+          const userIds = await repos.userRoles.listUserIdsByRole(roleId);
+          for (const uid of userIds) {
+            if (uid === input.userId) {
+              targetIsAdmin = true;
+              continue;
+            }
+            if (uid === org?.ownerId) continue;
+            const adminMembership = await repos.memberships.find(uid, input.organizationId);
+            if (adminMembership?.isActive()) otherActiveAdmins += 1;
+          }
+        }
+        if (targetIsAdmin && otherActiveAdmins === 0) throw new LastAdminRemovalError();
+
         user.disable();
         membership.disable();
       } else {

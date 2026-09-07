@@ -68,6 +68,7 @@ import {
   deleteTrustedIpController,
   updateTrustedIpController,
   listEnabledTrustedIpsController,
+  getAccessContextController,
 } from './controllers';
 import { AuthVariables, makeAuthMiddleware, requireInternalSecret, requirePermission } from './middlewares';
 import { TrustedIpRepository } from '../../domain/repositories';
@@ -162,6 +163,11 @@ export function internalRoutes(deps: AppDependencies): Hono {
     requireInternalSecret(deps.internalSecret),
     validateJson(provisionDeviceAccountSchema),
     provisionDeviceAccountController(useCases.provisionDeviceAccount));
+
+  // BUG #9: pv actual del usuario para que el gateway detecte tokens stale.
+  r.get('/internal/users/:userId/access-context',
+    requireInternalSecret(deps.internalSecret),
+    getAccessContextController(deps.accessContext));
 
   return r;
 }

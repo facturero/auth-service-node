@@ -15,6 +15,7 @@ import { LoginWithGoogleUseCase } from './application/use-cases/login-with-googl
 import { RefreshTokenUseCase } from './application/use-cases/refresh-token';
 import { LogoutUseCase } from './application/use-cases/logout';
 import { GetMeUseCase } from './application/use-cases/get-me';
+import { OrganizationHttpRepository } from './infrastructure/http/organization-http-repository';
 import { SwitchOrganizationUseCase } from './application/use-cases/switch-organization';
 import { CompleteProfileUseCase } from './application/use-cases/complete-profile';
 import { ListUsersUseCase } from './application/use-cases/list-users';
@@ -53,6 +54,10 @@ async function main(): Promise<void> {
   const tokenService = await createJwtTokenService(config);
   const googleVerifier = new GoogleIdTokenVerifierImpl(config.GOOGLE_CLIENT_ID);
   const accessContext = new SequelizeAccessContextResolver(repos.users, repos.memberships, sequelizeAccessQuery);
+  // Solo para GetMeUseCase: el read-model local de `organizations` se llena
+  // vía RabbitMQ y puede tardar ~30s en propagar tras completar el perfil de
+  // la organización (ver comentario en organization-http-repository.ts).
+  const orgHttpRepo = new OrganizationHttpRepository(config.ORG_SERVICE_URL);
 
   // Servicios
   const seedOrgRoles = new SeedOrganizationRolesUseCase(uow);
@@ -72,7 +77,7 @@ async function main(): Promise<void> {
       google: new LoginWithGoogleUseCase(googleVerifier, uow, tokenService, accessContext, seedOrgRoles, repos.refreshTokens),
       refresh: new RefreshTokenUseCase(uow, tokenService, accessContext),
       logout: new LogoutUseCase(repos.refreshTokens, tokenService),
-      getMe: new GetMeUseCase(repos.credentials, repos.users, repos.organizations),
+      getMe: new GetMeUseCase(repos.credentials, repos.users, orgHttpRepo),
       switchOrg: new SwitchOrganizationUseCase(uow, tokenService, accessContext),
       completeProfile: new CompleteProfileUseCase(uow, tokenService, accessContext, seedOrgRoles, repos.refreshTokens),
       listUsers: new ListUsersUseCase(repos.users, repos.userRoles, repos.roles, repos.organizations, repos.credentials, repos.userEstablishments),
