@@ -26,6 +26,22 @@ export class CreateRoleUseCase {
         await repos.roles.setPermissions(role.id, ids);
       }
 
+      // Crear un rol es un cambio de privilegios: tiene que quedar en la
+      // bitácora igual que `identity.role.updated`. Sin este evento se podía
+      // crear un rol con permisos sensibles sin dejar rastro.
+      await repos.outbox.add({
+        type: 'identity.role.created',
+        aggregateType: 'role',
+        aggregateId: role.id,
+        payload: {
+          roleId: role.id,
+          organizationId: input.organizationId,
+          name: input.name,
+          permissionCodes: input.permissionCodes,
+        },
+        occurredAt: new Date(),
+      });
+
       return { roleId: role.id };
     });
   }

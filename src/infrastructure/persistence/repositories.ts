@@ -29,6 +29,7 @@ import {
   RefreshToken,
 } from '../../domain/entities';
 import { User, Organization, Role, Permission, Membership, UserRole, UserEstablishment } from '../../domain/rbac';
+import { withActor } from '@facturero/outbox-relay';
 import {
   AccessQuery,
   CredentialRepository,
@@ -302,7 +303,10 @@ function outboxRepository(tx?: Transaction): OutboxRepository {
           aggregate_type: event.aggregateType,
           aggregate_id: event.aggregateId,
           type: event.type,
-          payload: event.payload,
+          // Inyecta actor/ip/request-id desde el contexto de la petición.
+          // Sin esto la bitácora de auditoría no sabe QUIÉN hizo cada cosa: el
+          // `userId` que ya llevan algunos payloads es el usuario AFECTADO.
+          payload: withActor(event.payload as Record<string, unknown>),
           occurred_at: event.occurredAt,
           processed_at: null,
         },

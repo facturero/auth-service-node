@@ -1,4 +1,5 @@
 import { Context, MiddlewareHandler } from 'hono';
+import { runWithActor } from '@facturero/outbox-relay';
 import { TokenService } from '../../application/ports';
 import { AppError, ForbiddenError, InvalidInternalSecretError, UnauthorizedError } from '../../domain/errors';
 
@@ -32,7 +33,22 @@ export function makeAuthMiddleware(tokenService: TokenService): MiddlewareHandle
     c.set('orgId', claims.orgId);
     c.set('permissions', claims.permissions);
     c.set('pv', claims.pv);
-    await next();
+
+    // A diferencia del resto de servicios, aquí el actor NO viene en headers
+    // del gateway: este servicio verifica el JWT él mismo y el actor es el
+    // sujeto del token. La IP y el request-id sí los pone el gateway.
+    // Ojo: las rutas públicas (registro, login, aceptar invitación, reseteo de
+    // contraseña) no pasan por aquí, así que sus eventos quedan sin actor — es
+    // correcto: en esos casos no hay un usuario autenticado que responda.
+    await runWithActor(
+      {
+        actorId: claims.sub ?? null,
+        actorEmail: claims.email ?? null,
+        actorIp: c.req.header('X-Client-Ip') ?? null,
+        requestId: c.req.header('X-Request-Id') ?? null,
+      },
+      () => next(),
+    );
   };
 }
 
