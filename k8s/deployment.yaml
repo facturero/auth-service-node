@@ -111,6 +111,11 @@ spec:
                   key: client-id
             - name: CORS_ORIGIN
               value: "https://steep-geology-napping.ngrok-free.dev"
+            # Nombre público del frontend: los enlaces que genera el backend
+            # (invitación, restablecer contraseña) usan esta base. Sin ella cae
+            # al default localhost:5173 y los enlaces llegan rotos a producción.
+            - name: FRONTEND_URL
+              value: "https://crm.noahsolution.com"
             - name: OTEL_SERVICE_NAME
               value: "auth-service"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
