@@ -49,7 +49,8 @@ async function main(): Promise<void> {
 
   // Infraestructura
   const repos = buildRepositories(); // repos sin transacción (lecturas / writes simples)
-  const uow = new SequelizeUnitOfWork(); // para operaciones atómicas
+  let relay: OutboxRelay | undefined;
+  const uow = new SequelizeUnitOfWork((tx) => relay?.attachToTransaction(tx)); // para operaciones atómicas
   const hasher = new Argon2PasswordHasher();
   const tokenService = await createJwtTokenService(config);
   const googleVerifier = new GoogleIdTokenVerifierImpl(config.GOOGLE_CLIENT_ID);
@@ -103,7 +104,7 @@ async function main(): Promise<void> {
 
   // Infraestructura de mensajería (opcional, requiere RABBITMQ_URL)
   if (config.RABBITMQ_URL) {
-    const relay = new OutboxRelay({
+    relay = new OutboxRelay({
       sequelize,
       rabbitmqUrl: config.RABBITMQ_URL,
       exchange: 'crm.events',
