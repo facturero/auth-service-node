@@ -749,12 +749,43 @@ export class SequelizeUnitOfWork implements UnitOfWork {
   constructor(private readonly onCommit?: (tx: Transaction) => void) {}
 
   async execute<T>(work: (repos: Repositories) => Promise<T>): Promise<T> {
-    // Transacción gestionada: commit si resuelve, rollback si lanza.
-    return sequelize.transaction(async (tx) => {
-      // El relay publica el outbox justo tras el commit; sin este enganche los
-      // eventos esperan los 30s del timer de respaldo del relay.
-      this.onCommit?.(tx);
-      return work(buildRepositories(tx));
-    });
+    // Los deadlocks de InnoDB (1213) y lock-wait-timeout (1205) son retryables
+    // por diseño: InnoDB elige y mata a una víctima en cada ciclo. Reintentar
+    // la transacción completa absorbe el choque en vez de devolver un 500.
+    // El hook onCommit usa tx.afterCommit, así que un reintento fallido no
+    // publica nada: el outbox sale solo en el commit que prospera.
+    return withTransactionRetry(5, () =>
+      sequelize.transaction(
+        { isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED },
+        async (tx) => {
+          this.onCommit?.(tx);
+          return work(buildRepositories(tx));
+        },
+      ),
+    );
   }
+}
+
+const RETRYABLE_CODES = new Set(['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT']);
+
+function isRetryableError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const parent = (error as Error & { parent?: { code?: string } }).parent;
+  const code = parent?.code ?? (error as Error & { code?: string }).code;
+  return typeof code === 'string' && RETRYABLE_CODES.has(code);
+}
+
+async function withTransactionRetry<T>(attempts: number, fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt === attempts || !isRetryableError(error)) throw error;
+      // Backoff corto con jitter: evita que los reintentos de transacciones
+      // concurrentes que chocaron por el mismo gap-lock se re-sincronicen.
+      const delay = 25 + Math.floor(Math.random() * 50) * attempt;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw new Error('withTransactionRetry: attempts must be >= 1');
 }
