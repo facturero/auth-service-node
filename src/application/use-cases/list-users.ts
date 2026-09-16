@@ -1,11 +1,18 @@
 import {
   CredentialRepository,
   OrganizationRepository,
+  PosDeviceRepository,
   RoleRepository,
   UserRepository,
   UserRoleRepository,
   UserEstablishmentRepository,
 } from '../../domain/repositories';
+
+export interface ListUsersOptions {
+  /** `sub` del token que pide la lista: un usuario o un terminal POS. */
+  callerId?: string;
+  establishmentId?: string;
+}
 
 export interface UserSummaryItem {
   id: string;
@@ -28,13 +35,21 @@ export class ListUsersUseCase {
     private readonly organizations: OrganizationRepository,
     private readonly credentials: CredentialRepository,
     private readonly userEstablishments: UserEstablishmentRepository,
+    private readonly posDevices: PosDeviceRepository,
   ) {}
 
-  async execute(
-    organizationId: string,
-    includePasswordHash = false,
-    establishmentId?: string,
-  ): Promise<UserSummaryItem[]> {
+  async execute(organizationId: string, options: ListUsersOptions = {}): Promise<UserSummaryItem[]> {
+    const { callerId, establishmentId } = options;
+
+    // El hash de la contraseña solo sale hacia un terminal POS emparejado con
+    // ESTA organización: lo necesita para validar el login del cajero sin
+    // internet. A una persona no se le entrega nunca, tenga el permiso que
+    // tenga: con el hash se puede atacar la contraseña fuera de línea, sin
+    // límite de intentos. El `sub` de un token de terminal es el id de su fila
+    // en `pos_devices`; el de una persona nunca está ahí.
+    const callerDevice = callerId ? await this.posDevices.findById(callerId) : null;
+    const includePasswordHash = callerDevice?.organizationId === organizationId;
+
     const [users, orgRoles, org, establishmentUserIds] = await Promise.all([
       this.users.listByOrganization(organizationId),
       this.roles.findByOrganization(organizationId),

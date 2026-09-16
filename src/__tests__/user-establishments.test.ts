@@ -18,7 +18,7 @@ describe('user_establishments (Fase 2)', () => {
 
   beforeEach(async () => {
     uow = new InMemoryUnitOfWork();
-    listUsers = new ListUsersUseCase(uow.users, uow.userRoles, uow.roles, uow.organizations, uow.credentials, uow.userEstablishments);
+    listUsers = new ListUsersUseCase(uow.users, uow.userRoles, uow.roles, uow.organizations, uow.credentials, uow.userEstablishments, uow.posDevices);
     inviteUser = new InviteUserUseCase(uow, { generateInviteToken: () => 'http://localhost:5173/accept-invite?token=mock' });
     updateUserEstablishments = new UpdateUserEstablishmentsUseCase(uow);
 
@@ -52,7 +52,7 @@ describe('user_establishments (Fase 2)', () => {
     await uow.userEstablishments.replaceForUser(userA.id, [establishmentA]);
     await uow.userEstablishments.replaceForUser(userB.id, [establishmentB]);
 
-    const items = await listUsers.execute(orgId, false, establishmentA);
+    const items = await listUsers.execute(orgId, { establishmentId: establishmentA });
     // Los admins (rol Administrador) se incluyen siempre al filtrar por
     // establecimiento: el POS necesita sincronizarlos aunque no estén asignados.
     expect(items.map((i) => i.email)).toEqual(['a@test.com', 'b@test.com']);

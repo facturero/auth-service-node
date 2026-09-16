@@ -47,6 +47,7 @@ import {
 } from './helpers';
 import { Permission, Role, Membership, UserRole } from '../domain/rbac';
 import { UnauthorizedError } from '../domain/errors';
+import { PosDevice } from '../domain/entities';
 
 // ---------------------------------------------------------------------------
 // Token service que preserva claims completos (permissions, orgId, pv)
@@ -153,7 +154,7 @@ function buildTestApp() {
       logout: new LogoutUseCase(refreshTokens, tokenService),
       getMe: new GetMeUseCase(credentials, users, organizations),
       switchOrg: new SwitchOrganizationUseCase(uow, tokenService, accessContext),
-      listUsers: new ListUsersUseCase(users, userRoles, roles, organizations, credentials, userEstablishments),
+      listUsers: new ListUsersUseCase(users, userRoles, roles, organizations, credentials, userEstablishments, uow.posDevices),
       inviteUser: new InviteUserUseCase(uow, { generateInviteToken: () => 'http://localhost:5173/accept-invite?token=mock' }),
       assignRole: new AssignRoleUseCase(uow),
       disableUser: new DisableUserUseCase(uow),
@@ -369,22 +370,62 @@ describe('E2E: RBAC API', () => {
       return { userId, token: login.json.accessToken as string };
     }
 
-    it('includes passwordHash only when the actor has password:view', async () => {
-      const employee = await registerInOrg('emp@test.com', ['user:read']);
+    /** Token de un terminal POS: su `sub` es el id de la fila de `pos_devices`. */
+    async function deviceToken(deviceOrgId: string): Promise<string> {
+      const device = PosDevice.create({
+        id: `device-${deviceOrgId}`,
+        emissionPointId: 'ep-1',
+        organizationId: deviceOrgId,
+      });
+      await t.uow.posDevices.save(device);
+      const { token } = await t.tokenService.issueAccessToken({
+        sub: device.id,
+        email: 'pos-ep-1@internal.pos.local',
+        orgId: orgId,
+        countryCode: 'EC',
+        permissions: ['user:read', 'password:view'],
+        pv: 0,
+      });
+      return token;
+    }
+
+    function findEmployee(json: Json): Json {
+      return (json as unknown as Json[]).find((u) => u.email === 'emp@test.com') as Json;
+    }
+
+    it('never gives passwordHash to a person, even with password:view', async () => {
+      await registerInOrg('emp@test.com', ['user:read']);
       const viewer = await registerInOrg('view@test.com', ['user:read']);
       const admin = await registerInOrg('admview@test.com', ['user:read', 'password:view']);
 
       const asViewer = await t.getJson('/users', viewer.token);
       expect(asViewer.status).toBe(200);
-      const empForViewer = (asViewer.json as unknown as Json[]).find((u) => u.email === 'emp@test.com');
-      expect((empForViewer as Json).passwordHash).toBeNull();
-      expect((empForViewer as Json).hasPassword).toBe(true);
+      expect(findEmployee(asViewer.json).passwordHash).toBeNull();
+      expect(findEmployee(asViewer.json).hasPassword).toBe(true);
 
       const asAdmin = await t.getJson('/users', admin.token);
-      const empForAdmin = (asAdmin.json as unknown as Json[]).find((u) => u.email === 'emp@test.com');
-      expect((empForAdmin as Json).passwordHash).toBe('hashed:Secure123!');
+      expect(asAdmin.status).toBe(200);
+      expect(findEmployee(asAdmin.json).passwordHash).toBeNull();
+      expect(findEmployee(asAdmin.json).hasPassword).toBe(true);
+    });
 
-      expect(employee.userId).toBeTruthy();
+    it('gives passwordHash to a POS terminal paired with the same organization (offline login)', async () => {
+      await registerInOrg('emp@test.com', ['user:read']);
+      const token = await deviceToken(orgId);
+
+      const asDevice = await t.getJson('/users', token);
+      expect(asDevice.status).toBe(200);
+      expect(findEmployee(asDevice.json).passwordHash).toBe('hashed:Secure123!');
+    });
+
+    it('does not give passwordHash to a POS terminal of another organization', async () => {
+      await registerInOrg('emp@test.com', ['user:read']);
+      // Terminal registrado en otra organización, con un token que dice ser de ésta.
+      const token = await deviceToken('550e8400-e29b-41d4-a716-446655440077');
+
+      const asDevice = await t.getJson('/users', token);
+      expect(asDevice.status).toBe(200);
+      expect(findEmployee(asDevice.json).passwordHash).toBeNull();
     });
 
     it('returns 403 without user:read even with password:view', async () => {

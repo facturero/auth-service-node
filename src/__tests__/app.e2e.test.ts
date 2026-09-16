@@ -69,7 +69,7 @@ function buildTestApp() {
       logout: new LogoutUseCase(refreshTokens, tokenService),
       getMe: new GetMeUseCase(credentials, users, organizations),
       switchOrg: new SwitchOrganizationUseCase(uow, tokenService, accessContext),
-      listUsers: new ListUsersUseCase(users, userRoles, roles, organizations, credentials, userEstablishments),
+      listUsers: new ListUsersUseCase(users, userRoles, roles, organizations, credentials, userEstablishments, uow.posDevices),
       inviteUser: new InviteUserUseCase(uow, { generateInviteToken: () => 'http://localhost:5173/accept-invite?token=mock' }),
       assignRole: new AssignRoleUseCase(uow),
       disableUser: new DisableUserUseCase(uow),

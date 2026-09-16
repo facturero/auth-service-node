@@ -146,9 +146,8 @@ export function listUsersController(useCase: ListUsersUseCase) {
   return async (c: Context<{ Variables: AuthVariables }>) => {
     const orgId = c.get('orgId');
     if (!orgId) throw new NoActiveOrganizationError();
-    const canViewPasswords = c.get('permissions').includes('password:view');
     const establishmentId = c.req.query('establishmentId') || undefined;
-    const result = await useCase.execute(orgId, canViewPasswords, establishmentId);
+    const result = await useCase.execute(orgId, { callerId: c.get('userId'), establishmentId });
     return c.json(result, 200);
   };
 }

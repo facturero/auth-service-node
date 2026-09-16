@@ -81,7 +81,7 @@ async function main(): Promise<void> {
       getMe: new GetMeUseCase(repos.credentials, repos.users, orgHttpRepo),
       switchOrg: new SwitchOrganizationUseCase(uow, tokenService, accessContext),
       completeProfile: new CompleteProfileUseCase(uow, tokenService, accessContext, seedOrgRoles, repos.refreshTokens),
-      listUsers: new ListUsersUseCase(repos.users, repos.userRoles, repos.roles, repos.organizations, repos.credentials, repos.userEstablishments),
+      listUsers: new ListUsersUseCase(repos.users, repos.userRoles, repos.roles, repos.organizations, repos.credentials, repos.userEstablishments, repos.posDevices),
       inviteUser: new InviteUserUseCase(uow, inviteTokenService),
       assignRole: new AssignRoleUseCase(uow),
       disableUser: new DisableUserUseCase(uow),
