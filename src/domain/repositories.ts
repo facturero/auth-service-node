@@ -89,6 +89,8 @@ export interface RoleRepository {
   save(role: Role): Promise<void>;
   setPermissions(roleId: string, permissionIds: string[]): Promise<void>;
   getPermissionCodes(roleId: string): Promise<string[]>;
+  /** Códigos de permiso de varios roles en UNA query (evita el N+1 del listado). */
+  getPermissionCodesForRoles(roleIds: string[]): Promise<Map<string, string[]>>;
 }
 
 export interface PermissionRepository {

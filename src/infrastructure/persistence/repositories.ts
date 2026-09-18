@@ -498,6 +498,25 @@ function roleRepository(tx?: Transaction): RoleRepository {
       );
       return rows.map((r) => r.code);
     },
+    async getPermissionCodesForRoles(roleIds) {
+      // Una sola query para TODOS los roles del listado (antes: una por rol →
+      // N+1 que con miles de roles colapsaba el pool de conexiones y MySQL).
+      const map = new Map<string, string[]>();
+      if (roleIds.length === 0) return map;
+      const rows = await sequelize.query<{ role_id: string; code: string }>(
+        `SELECT rp.role_id AS role_id, p.code AS code
+           FROM role_permissions rp
+           JOIN permissions p ON p.id = rp.permission_id
+          WHERE rp.role_id IN (:roleIds)`,
+        { replacements: { roleIds }, type: QueryTypes.SELECT, transaction: tx },
+      );
+      for (const r of rows) {
+        const arr = map.get(r.role_id);
+        if (arr) arr.push(r.code);
+        else map.set(r.role_id, [r.code]);
+      }
+      return map;
+    },
   };
 }
 

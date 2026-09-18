@@ -14,16 +14,16 @@ export class ListRolesUseCase {
   async execute(organizationId: string): Promise<RoleSummaryItem[]> {
     const roles = await this.roles.findByOrganization(organizationId);
 
-    const items = await Promise.all(
-      roles.map(async (r) => ({
-        id: r.id,
-        name: r.name,
-        description: r.description,
-        isSystem: r.isSystem,
-        permissions: await this.roles.getPermissionCodes(r.id),
-      })),
-    );
+    // Permisos de TODOS los roles en una sola query (antes: getPermissionCodes
+    // por rol → N+1 que hacía colapsar GET /roles a ~30s con muchos roles).
+    const permsByRole = await this.roles.getPermissionCodesForRoles(roles.map((r) => r.id));
 
-    return items;
+    return roles.map((r) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      isSystem: r.isSystem,
+      permissions: permsByRole.get(r.id) ?? [],
+    }));
   }
 }
