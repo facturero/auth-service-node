@@ -134,15 +134,25 @@ spec:
             # Sin `limits` a proposito: un tope de CPU de 300m estrangulaba al servicio (throttle)
             # y las pruebas de stress-petitions medían el limite de Kubernetes, no la capacidad
             # del codigo, con el nodo casi ocioso. Se conservan los `requests` (reserva).
+          # El default de timeoutSeconds es 1s: bajo saturacion (login con Argon2 puede
+          # llevar la CPU a varios nucleos) /health tardaba mas y tres fallos seguidos
+          # (~45s) hacian que Kubernetes matara el pod ("Liveness probe failed: context
+          # deadline exceeded" + Killing, 3 reinicios en una prueba de carga), lo que
+          # agravaba la caida. Liveness solo debe matar un proceso realmente colgado:
+          # 5s de timeout y 6 fallos (~90s) antes de reiniciar.
           livenessProbe:
             httpGet:
               path: /health
               port: 3001
             initialDelaySeconds: 10
             periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
           readinessProbe:
             httpGet:
               path: /health
               port: 3001
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
