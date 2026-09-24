@@ -86,6 +86,13 @@ export interface RoleRepository {
   findById(id: string): Promise<Role | null>;
   findTemplates(): Promise<Role[]>;
   findByOrganization(organizationId: string): Promise<Role[]>;
+  /**
+   * Una página de roles de la organización, ordenada por nombre (sigue el índice único
+   * (organización, nombre): sin filesort y con orden estable). Para el listado HTTP: `findByOrganization`
+   * carga TODO y sigue siendo necesario en los flujos que necesitan el conjunto
+   * completo (sesión, deshabilitar usuario, semilla de roles).
+   */
+  listByOrganizationPage(organizationId: string, page: { limit: number; offset: number }): Promise<Role[]>;
   save(role: Role): Promise<void>;
   setPermissions(roleId: string, permissionIds: string[]): Promise<void>;
   getPermissionCodes(roleId: string): Promise<string[]>;

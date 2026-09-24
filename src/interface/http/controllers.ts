@@ -201,7 +201,13 @@ export function listRolesController(useCase: ListRolesUseCase) {
   return async (c: Context<{ Variables: AuthVariables }>) => {
     const orgId = c.get('orgId');
     if (!orgId) throw new NoActiveOrganizationError();
-    const result = await useCase.execute(orgId);
+    // ?page= y ?pageSize= opcionales; el use case satura y sanea lo que llegue.
+    const page = c.req.query('page');
+    const pageSize = c.req.query('pageSize');
+    const result = await useCase.execute(orgId, {
+      page: page !== undefined ? Number(page) : undefined,
+      pageSize: pageSize !== undefined ? Number(pageSize) : undefined,
+    });
     return c.json(result, 200);
   };
 }

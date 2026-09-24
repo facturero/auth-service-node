@@ -274,6 +274,16 @@ export class InMemoryRoleRepository implements RoleRepository {
     return Array.from(this.store.values()).filter((r) => r.organizationId === organizationId);
   }
 
+  async listByOrganizationPage(
+    organizationId: string,
+    { limit, offset }: { limit: number; offset: number },
+  ): Promise<Role[]> {
+    return Array.from(this.store.values())
+      .filter((r) => r.organizationId === organizationId)
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+      .slice(offset, offset + limit);
+  }
+
   async save(role: Role): Promise<void> {
     this.store.set(role.id, role);
   }

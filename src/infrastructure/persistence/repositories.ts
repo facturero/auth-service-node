@@ -465,6 +465,20 @@ function roleRepository(tx?: Transaction): RoleRepository {
       const rows = await RoleModel.findAll({ where: { organization_id: organizationId }, transaction: tx });
       return rows.map(toRole);
     },
+    async listByOrganizationPage(organizationId, { limit, offset }) {
+      const rows = await RoleModel.findAll({
+        where: { organization_id: organizationId },
+        // Orden por nombre: sigue el indice unico (organization_id, name), asi que
+        // LIMIT/OFFSET se resuelve por el indice sin ordenar en memoria todas las
+        // filas de la organizacion. El nombre es unico por organizacion, o sea que el
+        // orden es total y la paginacion estable.
+        order: [['name', 'ASC']],
+        limit,
+        offset,
+        transaction: tx,
+      });
+      return rows.map(toRole);
+    },
     async save(role) {
       const p = role.toPersistence();
       await RoleModel.upsert(
