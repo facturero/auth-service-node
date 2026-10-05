@@ -567,5 +567,75 @@ describe('E2E: RBAC API', () => {
       expect(json.code).toBe('INVALID_RESET_TOKEN');
     });
   });
+
+  describe('POST /users/invite (requirePermission: user:invite)', () => {
+    const orgId = uuidOrg;
+    const est1 = '11111111-1111-4111-8111-111111111111';
+    const est2 = '22222222-2222-4222-8222-222222222222';
+
+    async function registerInviter(): Promise<string> {
+      const email = 'inviter@test.com';
+      const reg = await t.postJson('/auth/register', { email, identification: email, password: 'Secure123!' });
+      const userId = (reg.json.user as Json).id as string;
+      const permIds = ['user:invite', 'user:read'].map((code) => addPermission(t.permissions, code));
+      const role = Role.createForOrg({ organizationId: orgId, name: 'Inviter', description: '', isSystem: false });
+      await t.roles.save(role);
+      await t.roles.setPermissions(role.id, permIds);
+      await t.memberships.save(Membership.create({ userId, organizationId: orgId, status: 'active' }));
+      await t.userRoles.assign(UserRole.assign({ userId, organizationId: orgId, roleId: role.id }));
+      const user = await t.users.findById(userId);
+      if (user) user.bumpPermissionsVersion();
+      const login = await t.postJson('/auth/login', { email, password: 'Secure123!' });
+      return login.json.accessToken as string;
+    }
+
+    async function targetRole(): Promise<string> {
+      const role = Role.createForOrg({ organizationId: orgId, name: 'Vendedor', description: '', isSystem: false });
+      await t.roles.save(role);
+      return role.id;
+    }
+
+    it('guarda los establecimientos de la invitación (antes el controlador los descartaba)', async () => {
+      const token = await registerInviter();
+      const roleId = await targetRole();
+
+      const res = await t.postJson('/users/invite', { email: 'nuevo@test.com', roleIds: [roleId], establishmentIds: [est1, est2] }, token);
+      expect(res.status).toBe(201);
+
+      const saved = await t.uow.userEstablishments.listByUser(res.json.userId as string);
+      expect(saved.map((e) => e.establishmentId).sort()).toEqual([est1, est2]);
+    });
+
+    it('el invitado aparece en la lista filtrada por establecimiento (lo que pide la caja POS)', async () => {
+      const token = await registerInviter();
+      const roleId = await targetRole();
+      await t.postJson('/users/invite', { email: 'nuevo@test.com', roleIds: [roleId], establishmentIds: [est1] }, token);
+      await t.postJson('/users/invite', { email: 'otro@test.com', roleIds: [roleId], establishmentIds: [est2] }, token);
+
+      const { status, json } = await t.getJson('/users?establishmentId=' + est1, token);
+      expect(status).toBe(200);
+      const emails = (json as unknown as Json[]).map((u) => u.email);
+      expect(emails).toContain('nuevo@test.com');
+      expect(emails).not.toContain('otro@test.com');
+    });
+
+    it('sin establishmentIds la invitación sigue funcionando y no asigna ninguno', async () => {
+      const token = await registerInviter();
+      const roleId = await targetRole();
+
+      const res = await t.postJson('/users/invite', { email: 'sin@test.com', roleIds: [roleId] }, token);
+      expect(res.status).toBe(201);
+      expect(await t.uow.userEstablishments.listByUser(res.json.userId as string)).toEqual([]);
+    });
+
+    it('rechaza establecimientos que no son un uuid (422) y no crea al usuario', async () => {
+      const token = await registerInviter();
+      const roleId = await targetRole();
+
+      const res = await t.postJson('/users/invite', { email: 'malo@test.com', roleIds: [roleId], establishmentIds: ['no-es-uuid'] }, token);
+      expect(res.status).toBe(422);
+      expect(await t.users.findByEmail('malo@test.com')).toBeNull();
+    });
+  });
 });
 

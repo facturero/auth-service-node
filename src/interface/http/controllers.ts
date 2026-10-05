@@ -156,8 +156,15 @@ export function inviteUserController(useCase: InviteUserUseCase) {
   return async (c: Context<{ Variables: AuthVariables }>) => {
     const orgId = c.get('orgId');
     if (!orgId) throw new NoActiveOrganizationError();
-    const body = c.req.valid('json' as never) as { email: string; roleIds: string[] };
-    const result = await useCase.execute({ organizationId: orgId, email: body.email, roleIds: body.roleIds });
+    const body = c.req.valid('json' as never) as { email: string; roleIds: string[]; establishmentIds?: string[] };
+    // `establishmentIds` también se pasa: el validador y el caso de uso lo soportan, pero este controlador lo descartaba
+    // y un invitado no quedaba en ningún establecimiento, así que no aparecía en ninguna caja POS (visto el 2026-10-05).
+    const result = await useCase.execute({
+      organizationId: orgId,
+      email: body.email,
+      roleIds: body.roleIds,
+      establishmentIds: body.establishmentIds,
+    });
     return c.json(result, 201);
   };
 }
