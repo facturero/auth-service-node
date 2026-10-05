@@ -49,11 +49,17 @@ export class ResetPasswordUseCase {
 
       await repos.refreshTokens.revokeAllByCredentialId(credential.id);
 
+      // El evento va con las organizaciones del usuario: el hash de la contraseña se espeja en las cajas POS de
+      // cada organización, y el gateway solo sabe avisarles (`catalog.changed`) si el evento dice a cuáles. Sin
+      // esto la contraseña nueva llegaba a la caja en el siguiente ciclo programado (hasta 5 min), y mientras
+      // tanto la vieja seguía valiendo y la nueva se rechazaba (visto el 2026-10-05).
+      const memberships = await repos.memberships.listActiveByUser(user.id);
+
       await repos.outbox.add({
         type: 'identity.user.password_reset_completed',
         aggregateType: 'user',
         aggregateId: user.id,
-        payload: { userId: user.id, email: user.email },
+        payload: { userId: user.id, email: user.email, organizationIds: memberships.map((m) => m.organizationId) },
         occurredAt: new Date(),
       });
 

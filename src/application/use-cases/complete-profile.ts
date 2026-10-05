@@ -48,6 +48,9 @@ export class CompleteProfileUseCase {
       user.completeProfile({ fullName: input.fullName, identification: id.toString(), avatarFileId: input.avatarFileId });
       await repos.users.save(user);
 
+      // Con las organizaciones del usuario: el nombre se espeja en las cajas POS (ver reset-password.ts).
+      const memberships = await repos.memberships.listActiveByUser(input.userId);
+
       await repos.outbox.add({
         type: 'identity.user.profile_completed',
         aggregateType: 'user',
@@ -56,12 +59,12 @@ export class CompleteProfileUseCase {
           userId: user.id,
           fullName: input.fullName,
           identification: id.toString(),
+          organizationIds: memberships.map((m) => m.organizationId),
         },
         occurredAt: new Date(),
       });
 
       // Si el usuario no tiene organización, crear una automáticamente
-      const memberships = await repos.memberships.listActiveByUser(input.userId);
       if (memberships.length === 0) {
         const org = Organization.create({});
         await repos.organizations.save(org);
