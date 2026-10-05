@@ -21,6 +21,11 @@ export interface UserSummaryItem {
   fullName: string | null;
   status: string;
   roles: string[];
+  /**
+   * Permisos efectivos del usuario en la organización: la unión de los de todos sus roles. El terminal POS decide
+   * con ellos si el usuario puede entrar a la caja (`pos:access`) sin mirar nombres de rol.
+   */
+  permissions: string[];
   establishmentIds: string[];
   isOwner: boolean;
   hasPassword: boolean;
@@ -61,6 +66,7 @@ export class ListUsersUseCase {
 
     const ownerId = org?.ownerId ?? null;
     const roleNames = new Map(orgRoles.map((r) => [r.id, r.name]));
+    const rolePermissions = await this.roles.getPermissionCodesForRoles(orgRoles.map((r) => r.id));
 
     // Si vino un establecimiento, quedamos solo con los usuarios asignados
     // PERO siempre incluimos los admins (rol "Administrador") aunque no tengan
@@ -96,6 +102,7 @@ export class ListUsersUseCase {
           fullName: u.fullName,
           status: u.status,
           roles: assignments.map((a) => roleNames.get(a.roleId) ?? ''),
+          permissions: [...new Set(assignments.flatMap((a) => rolePermissions.get(a.roleId) ?? []))].sort(),
           establishmentIds: establishments.map((e) => e.establishmentId),
           isOwner: u.id === ownerId,
           hasPassword: credential?.hasPassword() ?? false,
