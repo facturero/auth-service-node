@@ -300,6 +300,12 @@ export class Membership {
     this.props.updatedAt = new Date();
   }
 
+  /** Vuelve a "invitado": quien nunca aceptó la invitación sigue pendiente de ponerle contraseña. */
+  markInvited(): void {
+    this.props.status = 'invited';
+    this.props.updatedAt = new Date();
+  }
+
   toPersistence(): MembershipProps {
     return { ...this.props };
   }

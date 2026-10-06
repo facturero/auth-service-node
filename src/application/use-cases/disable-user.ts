@@ -58,7 +58,15 @@ export class DisableUserUseCase {
         membership.disable();
       } else {
         user.activate();
-        membership.activate();
+        // Habilitar NO es lo mismo que "ya aceptó": a quien nunca puso contraseña (no tiene credencial) se le devuelve
+        // la membresía a "invitado" y su invitación vuelve a poder aceptarse. Dejarla en "activo" la bloqueaba para
+        // siempre: la invitación daba MEMBERSHIP_NOT_INVITED y el restablecimiento "no tiene contraseña configurada"
+        // (visto el 2026-10-05 al deshabilitar y habilitar a un invitado). Una membresía que sigue "invitada" no se toca.
+        if (membership.status !== 'invited') {
+          const credential = await repos.credentials.findByUserId(input.userId);
+          if (credential) membership.activate();
+          else membership.markInvited();
+        }
       }
 
       await repos.users.save(user);
