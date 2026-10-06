@@ -116,6 +116,11 @@ spec:
             # al default localhost:5173 y los enlaces llegan rotos a producción.
             - name: FRONTEND_URL
               value: "https://crm.noahsolution.com"
+            # Las invitaciones van firmadas y caducan a los 7 días. Los enlaces viejos (sin firma) se podían fabricar con
+            # solo el id del usuario y el de la organización, así que ya no se aceptan: a quien tenga una invitación
+            # pendiente de antes se le reenvía desde el CRM (reenviar genera un enlace firmado).
+            - name: INVITE_ALLOW_LEGACY_TOKENS
+              value: "false"
             - name: OTEL_SERVICE_NAME
               value: "auth-service"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
