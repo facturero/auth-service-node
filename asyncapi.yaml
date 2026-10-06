@@ -287,7 +287,9 @@ components:
       properties:
         userId: { type: string, format: uuid }
         fullName: { type: string }
-        identification: { type: string, description: 'type:number', example: 'cedula:1712345678' }
+        identification: { type: string, description: 'solo el número (el tipo va aparte en identificationType)', example: '1712345678' }
+        identificationType: { type: string, enum: [cedula, ruc, passport, dni] }
+        organizationIds: { type: array, items: { type: string, format: uuid }, description: 'Organizaciones activas del usuario (para avisar a sus cajas POS)' }
 
     OrgUpdatedPayload:
       type: object

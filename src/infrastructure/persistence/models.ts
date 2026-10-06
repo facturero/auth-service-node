@@ -235,6 +235,7 @@ export class UserModel extends Model<
   declare email: string;
   declare username: string;
   declare identification: string | null;
+  declare identification_type: string | null;
   declare full_name: string | null;
   declare avatar_file_id: string | null;
   declare status: 'active' | 'disabled';
@@ -250,6 +251,7 @@ UserModel.init(
     email: { type: DataTypes.STRING(255), allowNull: false, unique: true },
     username: { type: DataTypes.STRING(7), allowNull: false, unique: true },
     identification: { type: DataTypes.STRING(20), allowNull: true, unique: true },
+    identification_type: { type: DataTypes.STRING(10), allowNull: true },
     full_name: { type: DataTypes.STRING(255), allowNull: true },
     avatar_file_id: { type: DataTypes.CHAR(36), allowNull: true },
     status: { type: DataTypes.ENUM('active', 'disabled'), allowNull: false, defaultValue: 'active' },

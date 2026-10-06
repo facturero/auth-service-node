@@ -35,7 +35,7 @@ export class CompleteProfileUseCase {
         throw new UserNotFoundError();
       }
 
-      const existingIdent = await repos.users.findByIdentification(id.toString());
+      const existingIdent = await repos.users.findByIdentification(id.number);
       if (existingIdent && existingIdent.id !== input.userId) {
         throw new IdentificationAlreadyExistsError();
       }
@@ -45,7 +45,12 @@ export class CompleteProfileUseCase {
         throw new UserNotFoundError();
       }
 
-      user.completeProfile({ fullName: input.fullName, identification: id.toString(), avatarFileId: input.avatarFileId });
+      user.completeProfile({
+        fullName: input.fullName,
+        identification: id.number,
+        identificationType: id.type,
+        avatarFileId: input.avatarFileId,
+      });
       await repos.users.save(user);
 
       // Con las organizaciones del usuario: el nombre se espeja en las cajas POS (ver reset-password.ts).
@@ -58,7 +63,8 @@ export class CompleteProfileUseCase {
         payload: {
           userId: user.id,
           fullName: input.fullName,
-          identification: id.toString(),
+          identification: id.number,
+          identificationType: id.type,
           organizationIds: memberships.map((m) => m.organizationId),
         },
         occurredAt: new Date(),

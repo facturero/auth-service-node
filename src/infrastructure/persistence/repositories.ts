@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { QueryTypes, Transaction } from 'sequelize';
+import { Op, QueryTypes, Transaction } from 'sequelize';
+import { identificationLookupValues } from '../../domain/value-objects';
 import { sequelize } from './sequelize';
 import {
   CredentialModel,
@@ -324,6 +325,7 @@ function toUser(m: UserModel): User {
     email: m.email,
     username: m.username,
     identification: m.identification,
+    identificationType: m.identification_type,
     fullName: m.full_name,
     avatarFileId: m.avatar_file_id,
     status: m.status,
@@ -410,7 +412,11 @@ function userRepository(tx?: Transaction): UserRepository {
       return m ? toUser(m) : null;
     },
     async findByIdentification(identification) {
-      const m = await UserModel.findOne({ where: { identification }, transaction: tx });
+      // Sin importar el formato con el que quedó guardada (número solo, o el viejo "cedula:171…").
+      const m = await UserModel.findOne({
+        where: { identification: { [Op.in]: identificationLookupValues(identification) } },
+        transaction: tx,
+      });
       return m ? toUser(m) : null;
     },
     async save(user) {
@@ -421,6 +427,7 @@ function userRepository(tx?: Transaction): UserRepository {
           email: p.email,
           username: p.username,
           identification: p.identification,
+          identification_type: p.identificationType ?? null,
           full_name: p.fullName,
           avatar_file_id: p.avatarFileId,
           status: p.status,

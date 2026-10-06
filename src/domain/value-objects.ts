@@ -85,6 +85,38 @@ export class Identification {
   }
 }
 
+const IDENTIFICATION_TYPES: IdentificationType[] = ['cedula', 'ruc', 'passport', 'dni'];
+
+/**
+ * Lo que hay guardado en `users.identification` + `users.identification_type` -> { type, number }.
+ *  - Formato actual: el número solo, y el tipo en su columna.
+ *  - Formato viejo de `complete-profile`: "cedula:1710034065" en una sola columna (sin tipo aparte).
+ *  - Registro con contraseña / Google: el número sin tipo; se asume cédula, como siempre.
+ */
+export function readStoredIdentification(
+  identification: string | null,
+  identificationType: string | null,
+): { type: string; number: string } | null {
+  if (!identification) return null;
+  if (identificationType) return { type: identificationType, number: identification };
+  const idx = identification.indexOf(':');
+  if (idx > 0) {
+    const type = identification.slice(0, idx);
+    if ((IDENTIFICATION_TYPES as string[]).includes(type)) return { type, number: identification.slice(idx + 1) };
+  }
+  return { type: 'cedula', number: identification };
+}
+
+/**
+ * Todos los valores con los que puede estar guardado un número, para buscar duplicados sin que importe el formato:
+ * el número solo y el viejo "tipo:número" de cada tipo. Acepta también que le pasen ya el "tipo:número".
+ */
+export function identificationLookupValues(identification: string): string[] {
+  const parsed = readStoredIdentification(identification, null);
+  const number = parsed ? parsed.number : identification;
+  return [number, ...IDENTIFICATION_TYPES.map((t) => `${t}:${number}`)];
+}
+
 // Solo letras (a-z, A-Z) y números (0-9): sin espacios ni símbolos. Hasta 7
 // caracteres, que es lo que admite la columna `users.username` (VARCHAR(7)).
 // Se normaliza a mayúsculas: la unicidad de la tabla usa el código en

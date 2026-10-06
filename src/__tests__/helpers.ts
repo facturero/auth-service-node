@@ -42,6 +42,7 @@ import {
   UnitOfWork,
 } from '../application/ports';
 import { InvalidGoogleTokenError, UnauthorizedError } from '../domain/errors';
+import { identificationLookupValues } from '../domain/value-objects';
 
 // ---------------------------------------------------------------------------
 // In-memory repositories
@@ -219,8 +220,9 @@ export class InMemoryUserRepository implements UserRepository {
   }
 
   async findByIdentification(identification: string): Promise<User | null> {
+    const accepted = identificationLookupValues(identification);
     for (const u of this.store.values()) {
-      if (u.identification === identification) return u;
+      if (u.identification && accepted.includes(u.identification)) return u;
     }
     return null;
   }

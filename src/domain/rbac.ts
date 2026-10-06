@@ -12,6 +12,8 @@ export interface UserProps {
   email: string;
   username: string;
   identification: string | null;
+  /** cedula | ruc | passport | dni. null = no se sabe (registro sin tipo): se asume cédula. */
+  identificationType?: string | null;
   fullName: string | null;
   avatarFileId: string | null;
   status: UserStatus;
@@ -51,6 +53,7 @@ export class User {
       // pasa, se genera automáticamente con generateUsername().
       username: Username.create(params.username ?? generateUsername()).value,
       identification: params.identification ?? null,
+      identificationType: null,
       fullName: params.fullName ?? null,
       avatarFileId: null,
       status: 'active',
@@ -69,6 +72,7 @@ export class User {
   get email(): string { return this.props.email; }
   get username(): string { return this.props.username; }
   get identification(): string | null { return this.props.identification; }
+  get identificationType(): string | null { return this.props.identificationType ?? null; }
   get fullName(): string | null { return this.props.fullName; }
   get avatarFileId(): string | null { return this.props.avatarFileId; }
   get status(): UserStatus { return this.props.status; }
@@ -91,9 +95,11 @@ export class User {
     this.props.updatedAt = new Date();
   }
 
-  completeProfile(params: { fullName: string; identification: string; avatarFileId?: string | null }): void {
+  completeProfile(params: { fullName: string; identification: string; identificationType: string; avatarFileId?: string | null }): void {
     this.props.fullName = params.fullName;
+    // El número solo en `identification` y el tipo en su propia columna (antes se guardaba "cedula:171…" junta).
     this.props.identification = params.identification;
+    this.props.identificationType = params.identificationType;
     if (params.avatarFileId !== undefined) {
       this.props.avatarFileId = params.avatarFileId;
     }

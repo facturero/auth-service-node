@@ -1,6 +1,7 @@
 import { UnauthorizedError } from '../../domain/errors';
 import { CredentialRepository, UserRepository, OrganizationRepository } from '../../domain/repositories';
 import { MeOutput } from '../dtos';
+import { readStoredIdentification } from '../../domain/value-objects';
 
 export class GetMeUseCase {
   constructor(
@@ -21,12 +22,7 @@ export class GetMeUseCase {
       ? (await this.organizations.findById(orgId))?.name ?? null
       : null;
 
-    const identification = (() => {
-      if (!user?.identification) return null;
-      const idx = user.identification.indexOf(':');
-      if (idx === -1) return { type: 'cedula', number: user.identification };
-      return { type: user.identification.slice(0, idx), number: user.identification.slice(idx + 1) };
-    })();
+    const identification = readStoredIdentification(user?.identification ?? null, user?.identificationType ?? null);
 
     return {
       id: credential.userId,
