@@ -11,6 +11,7 @@ import { SwitchOrganizationUseCase } from '../application/use-cases/switch-organ
 import { ListUsersUseCase } from '../application/use-cases/list-users';
 import { InviteUserUseCase } from '../application/use-cases/invite-user';
 import { AssignRoleUseCase } from '../application/use-cases/assign-role';
+import { RemoveRoleUseCase } from '../application/use-cases/remove-role';
 import { DisableUserUseCase } from '../application/use-cases/disable-user';
 import { ListRolesUseCase } from '../application/use-cases/list-roles';
 import { CreateRoleUseCase } from '../application/use-cases/create-role';
@@ -72,6 +73,7 @@ function buildTestApp() {
       listUsers: new ListUsersUseCase(users, userRoles, roles, organizations, credentials, userEstablishments, uow.posDevices),
       inviteUser: new InviteUserUseCase(uow, { generateInviteToken: () => 'http://localhost:5173/accept-invite?token=mock' }),
       assignRole: new AssignRoleUseCase(uow),
+      removeRole: new RemoveRoleUseCase(uow),
       disableUser: new DisableUserUseCase(uow),
       updateUserEstablishments: new UpdateUserEstablishmentsUseCase(uow),
       listRoles: new ListRolesUseCase(roles),

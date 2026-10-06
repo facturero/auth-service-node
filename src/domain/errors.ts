@@ -143,6 +143,12 @@ export class LastAdminRemovalError extends AppError {
   constructor(message = 'No se puede eliminar el último administrador de la organización.') { super(message); }
 }
 
+export class UserMustKeepRoleError extends AppError {
+  readonly code = 'USER_MUST_KEEP_ROLE';
+  readonly httpStatus = 409;
+  constructor(message = 'El usuario debe conservar al menos un rol. Si ya no debe entrar, deshabilítalo.') { super(message); }
+}
+
 export class UserAlreadyInvitedError extends AppError {
   readonly code = 'USER_ALREADY_INVITED';
   readonly httpStatus = 409;

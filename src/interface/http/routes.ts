@@ -11,6 +11,7 @@ import { CompleteProfileUseCase } from '../../application/use-cases/complete-pro
 import { ListUsersUseCase } from '../../application/use-cases/list-users';
 import { InviteUserUseCase } from '../../application/use-cases/invite-user';
 import { AssignRoleUseCase } from '../../application/use-cases/assign-role';
+import { RemoveRoleUseCase } from '../../application/use-cases/remove-role';
 import { DisableUserUseCase } from '../../application/use-cases/disable-user';
 import { ListRolesUseCase } from '../../application/use-cases/list-roles';
 import { CreateRoleUseCase } from '../../application/use-cases/create-role';
@@ -44,6 +45,7 @@ import {
 import {
   acceptInviteController,
   assignRoleController,
+  removeRoleController,
   completeProfileController,
   createRoleController,
   disableUserController,
@@ -87,6 +89,7 @@ export interface AppDependencies {
     listUsers: ListUsersUseCase;
     inviteUser: InviteUserUseCase;
     assignRole: AssignRoleUseCase;
+    removeRole: RemoveRoleUseCase;
     disableUser: DisableUserUseCase;
     updateUserEstablishments: UpdateUserEstablishmentsUseCase;
     listRoles: ListRolesUseCase;
@@ -140,6 +143,7 @@ export function adminRoutes(deps: AppDependencies): Hono<{ Variables: AuthVariab
   r.get('/users', auth, requirePermission('user:read'), listUsersController(useCases.listUsers));
   r.post('/users/invite', auth, requirePermission('user:invite'), validateJson(inviteUserSchema), inviteUserController(useCases.inviteUser));
   r.post('/users/:id/roles', auth, requirePermission('user:assign_role'), validateJson(assignRoleSchema), assignRoleController(useCases.assignRole));
+  r.delete('/users/:id/roles/:roleId', auth, requirePermission('user:assign_role'), removeRoleController(useCases.removeRole));
   r.post('/users/:id/disable', auth, requirePermission('user:update'), disableUserController(useCases.disableUser));
   r.post('/users/:id/password-reset', auth, requirePermission('password:change'), requestPasswordResetController(useCases.requestPasswordReset));
   r.post('/users/:id/establishments', auth, requirePermission('user:update'), validateJson(updateUserEstablishmentsSchema), updateUserEstablishmentsController(useCases.updateUserEstablishments));

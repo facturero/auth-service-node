@@ -361,8 +361,9 @@ paths:
       x-required-permission: user:assign_role
       description: >
         Asigna un rol de la organización activa al usuario. Incrementa `pv` del
-        usuario (revocación) y emite `identity.user.role_assigned`. No se puede
-        dejar la organización sin su último Administrador.
+        usuario (revocación) y emite `identity.user.role_assigned`. Es idempotente: un rol
+        que el usuario ya tiene se salta sin error ni evento. El rol debe ser de la
+        organización activa (o global) y el usuario miembro de ella.
       security:
         - bearerAuth: []
       parameters:
@@ -378,6 +379,40 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404':
           description: Usuario o rol no encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /users/{id}/roles/{roleId}:
+    delete:
+      tags: [users]
+      summary: Quitar un rol a un usuario
+      x-required-permission: user:assign_role
+      description: >
+        Quita UN rol de la organización activa al usuario. Incrementa `pv` y emite
+        `identity.user.role_removed`. Quitar un rol que el usuario no tiene es un no-op (204).
+        No se puede dejar al usuario sin ningún rol (409 `USER_MUST_KEEP_ROLE`; para sacarlo
+        está «deshabilitar») ni quitarle «Administrador» al último administrador activo
+        (409 `LAST_ADMIN_REMOVAL`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - name: roleId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Rol quitado }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Usuario o rol no encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: El usuario quedaría sin roles, o sería el último administrador
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }

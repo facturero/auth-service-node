@@ -54,6 +54,19 @@ channels:
       userRoleAssigned:
         $ref: '#/components/messages/UserRoleAssigned'
 
+  userRoleRemoved:
+    address: identity.user.role_removed
+    description: Se quitó un rol a un usuario en una organización.
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      userRoleRemoved:
+        $ref: '#/components/messages/UserRoleRemoved'
+
   roleUpdated:
     address: identity.role.updated
     description: Cambiaron los permisos de un rol (implica pv++ a sus usuarios).
@@ -133,6 +146,11 @@ operations:
     channel: { $ref: '#/channels/userRoleAssigned' }
     summary: Emite identity.user.role_assigned (consumido por el gateway para refrescar la caché de pv).
 
+  publishUserRoleRemoved:
+    action: send
+    channel: { $ref: '#/channels/userRoleRemoved' }
+    summary: Emite identity.user.role_removed (mismo contrato que role_assigned; el gateway lo usa para pv y para avisar a las cajas).
+
   publishRoleUpdated:
     action: send
     channel: { $ref: '#/channels/roleUpdated' }
@@ -188,6 +206,15 @@ components:
     UserRoleAssigned:
       name: identity.user.role_assigned
       title: Rol asignado a usuario
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/UserRoleAssignedPayload'
+
+    UserRoleRemoved:
+      name: identity.user.role_removed
+      title: Rol quitado a usuario
       contentType: application/json
       traits:
         - $ref: '#/components/messageTraits/eventEnvelope'

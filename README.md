@@ -309,6 +309,7 @@ erDiagram
 | `GET` | `/users` | **sí** | `user:read` |
 | `POST` | `/users/invite` | **sí** | `user:invite` |
 | `POST` | `/users/:id/roles` | **sí** | `user:assign_role` |
+| `DELETE` | `/users/:id/roles/:roleId` | **sí** | `user:assign_role` |
 | `GET` | `/roles` | **sí** | `user:read` |
 | `POST` | `/roles` | **sí** | `user:assign_role` |
 | `PATCH` | `/roles/:id/permissions` | **sí** | `user:assign_role` |
@@ -454,6 +455,7 @@ Los eventos se escriben en `outbox_messages` dentro de la misma transacción (Ou
 |--------|--------|---------------|
 | `identity.user.created` | Alta / invitación de usuario | realtime |
 | `identity.user.role_assigned` | Asignación/cambio de rol (`pv++`) | gateway (caché de `pv`) |
+| `identity.user.role_removed` | Se quita un rol a un usuario (`pv++`) | gateway (caché de `pv`, aviso a las cajas) |
 | `identity.user.profile_completed` | Perfil completado | realtime |
 | `identity.role.updated` | Cambio de permisos de un rol | gateway (caché de `pv`) |
 | `identity.user.disabled` | Baja de usuario | gateway, realtime |

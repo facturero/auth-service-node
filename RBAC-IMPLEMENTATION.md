@@ -521,6 +521,7 @@ Factories que reciben el caso de uso (mismo patrón). Leen el `organizationId` d
   GET  /users                      require('user:read')      → ListUsers
   POST /users/invite               require('user:invite')    → InviteUser
   POST /users/:id/roles            require('user:assign_role')→ AssignRole
+  DELETE /users/:id/roles/:roleId  require('user:assign_role')→ RemoveRole
   POST /users/:id/disable          require('user:update')    → DisableUser (opcional)
   GET  /roles                      require('user:read')      → ListRoles
   POST /roles                      require('user:assign_role')→ CreateRole
@@ -544,6 +545,7 @@ Reemplaza `auth.credential.registered` por `identity.user.created`. Añade emisi
 |---|---|---|
 | `identity.user.created` | register / google / invite | `{ userId, email }` |
 | `identity.user.role_assigned` | assign role / invite | `{ userId, organizationId, roleId, pv }` |
+| `identity.user.role_removed` | remove role | `{ userId, organizationId, roleId }` |
 | `identity.role.updated` | update role permissions | `{ roleId, organizationId }` |
 | `identity.user.disabled` | disable user | `{ userId }` |
 
