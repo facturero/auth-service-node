@@ -22,6 +22,7 @@ import { ListUsersUseCase } from './application/use-cases/list-users';
 import { InviteUserUseCase } from './application/use-cases/invite-user';
 import { AssignRoleUseCase } from './application/use-cases/assign-role';
 import { RemoveRoleUseCase } from './application/use-cases/remove-role';
+import { DeleteRoleUseCase } from './application/use-cases/delete-role';
 import { DisableUserUseCase } from './application/use-cases/disable-user';
 import { SeedOrganizationRolesUseCase } from './application/use-cases/seed-organization-roles';
 import { ListRolesUseCase } from './application/use-cases/list-roles';
@@ -94,6 +95,7 @@ async function main(): Promise<void> {
       inviteUser: new InviteUserUseCase(uow, inviteTokenService),
       assignRole: new AssignRoleUseCase(uow),
       removeRole: new RemoveRoleUseCase(uow),
+      deleteRole: new DeleteRoleUseCase(uow),
       disableUser: new DisableUserUseCase(uow),
       updateUserEstablishments: new UpdateUserEstablishmentsUseCase(uow),
       listRoles: new ListRolesUseCase(repos.roles),

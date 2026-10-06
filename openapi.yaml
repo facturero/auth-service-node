@@ -484,6 +484,38 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
 
+  /roles/{id}:
+    delete:
+      tags: [roles]
+      summary: Eliminar un rol personalizado
+      x-required-permission: user:assign_role
+      description: >
+        Elimina un rol **creado por la organización activa**. Los roles de sistema (Administrador, Supervisor,
+        Vendedor…) no se pueden eliminar (403 `CANNOT_MODIFY_SYSTEM_ROLE`); un rol de otra organización responde 404
+        como si no existiera; un rol que algún usuario tiene asignado responde 409 `ROLE_IN_USE` (hay que quitárselo
+        antes con `DELETE /users/{id}/roles/{roleId}`). Emite `identity.role.deleted`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Rol eliminado }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Rol no encontrado (o de otra organización)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: El rol está asignado a usuarios
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /roles/{id}/permissions:
     patch:
       tags: [roles]

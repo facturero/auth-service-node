@@ -11,6 +11,7 @@ import { ListUsersUseCase } from '../../application/use-cases/list-users';
 import { InviteUserUseCase } from '../../application/use-cases/invite-user';
 import { AssignRoleUseCase } from '../../application/use-cases/assign-role';
 import { RemoveRoleUseCase } from '../../application/use-cases/remove-role';
+import { DeleteRoleUseCase } from '../../application/use-cases/delete-role';
 import { ListRolesUseCase } from '../../application/use-cases/list-roles';
 import { CreateRoleUseCase } from '../../application/use-cases/create-role';
 import { UpdateRolePermissionsUseCase } from '../../application/use-cases/update-role-permissions';
@@ -190,6 +191,17 @@ export function removeRoleController(useCase: RemoveRoleUseCase) {
     const roleId = c.req.param('roleId') ?? '';
     if (!userId || !roleId) return c.json({ code: 'MISSING_PARAM', message: 'userId y roleId son obligatorios.' }, 400);
     await useCase.execute({ organizationId: orgId, userId, roleId });
+    return c.body(null, 204);
+  };
+}
+
+export function deleteRoleController(useCase: DeleteRoleUseCase) {
+  return async (c: Context<{ Variables: AuthVariables }>) => {
+    const orgId = c.get('orgId');
+    if (!orgId) throw new NoActiveOrganizationError();
+    const roleId = c.req.param('id') ?? '';
+    if (!roleId) return c.json({ code: 'MISSING_PARAM', message: 'roleId es obligatorio.' }, 400);
+    await useCase.execute({ organizationId: orgId, roleId });
     return c.body(null, 204);
   };
 }

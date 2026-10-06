@@ -290,6 +290,11 @@ export class InMemoryRoleRepository implements RoleRepository {
     this.store.set(role.id, role);
   }
 
+  async delete(id: string): Promise<boolean> {
+    this.rolePermissions.delete(id);
+    return this.store.delete(id);
+  }
+
   async setPermissions(roleId: string, permissionIds: string[]): Promise<void> {
     this.rolePermissions.set(roleId, permissionIds);
   }

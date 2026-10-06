@@ -94,6 +94,8 @@ export interface RoleRepository {
    */
   listByOrganizationPage(organizationId: string, page: { limit: number; offset: number }): Promise<Role[]>;
   save(role: Role): Promise<void>;
+  /** Borra el rol; sus filas de role_permissions caen en cascada. `true` si existía. */
+  delete(id: string): Promise<boolean>;
   setPermissions(roleId: string, permissionIds: string[]): Promise<void>;
   getPermissionCodes(roleId: string): Promise<string[]>;
   /** Códigos de permiso de varios roles en UNA query (evita el N+1 del listado). */

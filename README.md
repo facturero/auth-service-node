@@ -312,6 +312,7 @@ erDiagram
 | `DELETE` | `/users/:id/roles/:roleId` | **sí** | `user:assign_role` |
 | `GET` | `/roles` | **sí** | `user:read` |
 | `POST` | `/roles` | **sí** | `user:assign_role` |
+| `DELETE` | `/roles/:id` | **sí** | `user:assign_role` (solo roles propios y no de sistema, sin usuarios asignados) |
 | `PATCH` | `/roles/:id/permissions` | **sí** | `user:assign_role` |
 | `GET` | `/permissions` | **sí** | (catálogo) |
 
@@ -458,6 +459,7 @@ Los eventos se escriben en `outbox_messages` dentro de la misma transacción (Ou
 | `identity.user.role_removed` | Se quita un rol a un usuario (`pv++`) | gateway (caché de `pv`, aviso a las cajas) |
 | `identity.user.profile_completed` | Perfil completado | realtime |
 | `identity.role.updated` | Cambio de permisos de un rol | gateway (caché de `pv`) |
+| `identity.role.deleted` | Se elimina un rol personalizado | bitácora de auditoría |
 | `identity.user.disabled` | Baja de usuario | gateway, realtime |
 
 **Consume:** `organization.org.updated` → actualiza `country_code` del read-model.

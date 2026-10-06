@@ -501,6 +501,10 @@ function roleRepository(tx?: Transaction): RoleRepository {
         { transaction: tx },
       );
     },
+    async delete(id) {
+      const removed = await RoleModel.destroy({ where: { id }, transaction: tx });
+      return removed > 0;
+    },
     async setPermissions(roleId, permissionIds) {
       await RolePermissionModel.destroy({ where: { role_id: roleId }, transaction: tx });
       if (permissionIds.length > 0) {

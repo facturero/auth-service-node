@@ -12,6 +12,7 @@ import { ListUsersUseCase } from '../../application/use-cases/list-users';
 import { InviteUserUseCase } from '../../application/use-cases/invite-user';
 import { AssignRoleUseCase } from '../../application/use-cases/assign-role';
 import { RemoveRoleUseCase } from '../../application/use-cases/remove-role';
+import { DeleteRoleUseCase } from '../../application/use-cases/delete-role';
 import { DisableUserUseCase } from '../../application/use-cases/disable-user';
 import { ListRolesUseCase } from '../../application/use-cases/list-roles';
 import { CreateRoleUseCase } from '../../application/use-cases/create-role';
@@ -46,6 +47,7 @@ import {
   acceptInviteController,
   assignRoleController,
   removeRoleController,
+  deleteRoleController,
   completeProfileController,
   createRoleController,
   disableUserController,
@@ -90,6 +92,7 @@ export interface AppDependencies {
     inviteUser: InviteUserUseCase;
     assignRole: AssignRoleUseCase;
     removeRole: RemoveRoleUseCase;
+    deleteRole: DeleteRoleUseCase;
     disableUser: DisableUserUseCase;
     updateUserEstablishments: UpdateUserEstablishmentsUseCase;
     listRoles: ListRolesUseCase;
@@ -150,6 +153,7 @@ export function adminRoutes(deps: AppDependencies): Hono<{ Variables: AuthVariab
 
   r.get('/roles', auth, requirePermission('user:read'), listRolesController(useCases.listRoles));
   r.post('/roles', auth, requirePermission('user:assign_role'), validateJson(createRoleSchema), createRoleController(useCases.createRole));
+  r.delete('/roles/:id', auth, requirePermission('user:assign_role'), deleteRoleController(useCases.deleteRole));
   r.patch('/roles/:id/permissions', auth, requirePermission('user:assign_role'), validateJson(updateRolePermissionsSchema), updateRolePermissionsController(useCases.updateRolePermissions));
 
   r.get('/permissions', auth, listPermissionsController(useCases.listPermissions));

@@ -80,6 +80,19 @@ channels:
       roleUpdated:
         $ref: '#/components/messages/RoleUpdated'
 
+  roleDeleted:
+    address: identity.role.deleted
+    description: Se eliminó un rol personalizado de una organización (no tenía usuarios asignados).
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      roleDeleted:
+        $ref: '#/components/messages/RoleDeleted'
+
   userDisabled:
     address: identity.user.disabled
     description: Se deshabilitó un usuario (revocación de acceso).
@@ -156,6 +169,11 @@ operations:
     channel: { $ref: '#/channels/roleUpdated' }
     summary: Emite identity.role.updated (consumido por el gateway para la caché de pv).
 
+  publishRoleDeleted:
+    action: send
+    channel: { $ref: '#/channels/roleDeleted' }
+    summary: Emite identity.role.deleted (bitácora de auditoría).
+
   publishUserDisabled:
     action: send
     channel: { $ref: '#/channels/userDisabled' }
@@ -220,6 +238,15 @@ components:
         - $ref: '#/components/messageTraits/eventEnvelope'
       payload:
         $ref: '#/components/schemas/UserRoleAssignedPayload'
+
+    RoleDeleted:
+      name: identity.role.deleted
+      title: Rol eliminado
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/RoleDeletedPayload'
 
     RoleUpdated:
       name: identity.role.updated
@@ -293,6 +320,14 @@ components:
       properties:
         roleId: { type: string, format: uuid }
         organizationId: { type: string, format: uuid }
+
+    RoleDeletedPayload:
+      type: object
+      required: [roleId, organizationId, name]
+      properties:
+        roleId: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        name: { type: string, description: Nombre que tenía el rol. }
 
     UserDisabledPayload:
       type: object

@@ -13,6 +13,7 @@ import { ListUsersUseCase } from '../application/use-cases/list-users';
 import { InviteUserUseCase } from '../application/use-cases/invite-user';
 import { AssignRoleUseCase } from '../application/use-cases/assign-role';
 import { RemoveRoleUseCase } from '../application/use-cases/remove-role';
+import { DeleteRoleUseCase } from '../application/use-cases/delete-role';
 import { DisableUserUseCase } from '../application/use-cases/disable-user';
 import { ListRolesUseCase } from '../application/use-cases/list-roles';
 import { CreateRoleUseCase } from '../application/use-cases/create-role';
@@ -159,6 +160,7 @@ function buildTestApp() {
       inviteUser: new InviteUserUseCase(uow, { generateInviteToken: () => 'http://localhost:5173/accept-invite?token=mock' }),
       assignRole: new AssignRoleUseCase(uow),
       removeRole: new RemoveRoleUseCase(uow),
+      deleteRole: new DeleteRoleUseCase(uow),
       disableUser: new DisableUserUseCase(uow),
       updateUserEstablishments: new UpdateUserEstablishmentsUseCase(uow),
       listRoles: new ListRolesUseCase(roles),
@@ -202,7 +204,15 @@ function buildTestApp() {
     return { status: res.status, json: text ? JSON.parse(text) as Json : {} };
   }
 
-  return { app, postJson, getJson, uow, credentials, users, roles, permissions, memberships, userRoles, tokenService };
+  async function deleteJson(path: string, token?: string): Promise<{ status: number; json: Json }> {
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await app.fetch(new Request(`http://localhost${path}`, { method: 'DELETE', headers }));
+    const text = await res.text();
+    return { status: res.status, json: text ? JSON.parse(text) as Json : {} };
+  }
+
+  return { app, postJson, getJson, deleteJson, uow, credentials, users, roles, permissions, memberships, userRoles, tokenService };
 }
 
 function addPermission(repo: InMemoryPermissionRepository, code: string): string {
@@ -637,6 +647,98 @@ describe('E2E: RBAC API', () => {
       const res = await t.postJson('/users/invite', { email: 'malo@test.com', roleIds: [roleId], establishmentIds: ['no-es-uuid'] }, token);
       expect(res.status).toBe(422);
       expect(await t.users.findByEmail('malo@test.com')).toBeNull();
+    });
+  });
+  describe('DELETE /roles/:id (requirePermission: user:assign_role)', () => {
+    const orgId = uuidOrg;
+
+    async function registerWith(email: string, permissionCodes: string[]): Promise<string> {
+      const reg = await t.postJson('/auth/register', { email, identification: email, password: 'Secure123!' });
+      const userId = (reg.json.user as Json).id as string;
+      const permIds = permissionCodes.map((code) => addPermission(t.permissions, code));
+      const role = Role.createForOrg({ organizationId: orgId, name: `Rol de ${email}`, description: '', isSystem: false });
+      await t.roles.save(role);
+      await t.roles.setPermissions(role.id, permIds);
+      await t.memberships.save(Membership.create({ userId, organizationId: orgId, status: 'active' }));
+      await t.userRoles.assign(UserRole.assign({ userId, organizationId: orgId, roleId: role.id }));
+      const user = await t.users.findById(userId);
+      if (user) user.bumpPermissionsVersion();
+      const login = await t.postJson('/auth/login', { email, password: 'Secure123!' });
+      return login.json.accessToken as string;
+    }
+
+    async function customRole(name = 'Prueba POS'): Promise<string> {
+      const role = Role.createForOrg({ organizationId: orgId, name, description: '', isSystem: false });
+      await t.roles.save(role);
+      return role.id;
+    }
+
+    it('con el permiso, borra un rol propio y personalizado (204) y deja el evento de auditoría', async () => {
+      const token = await registerWith('admin@test.com', ['user:assign_role']);
+      const roleId = await customRole();
+
+      const res = await t.deleteJson(`/roles/${roleId}`, token);
+      expect(res.status).toBe(204);
+      expect(await t.roles.findById(roleId)).toBeNull();
+      expect(t.uow.outbox.events.some((e) => e.type === 'identity.role.deleted' && e.aggregateId === roleId)).toBe(true);
+    });
+
+    it('sin el permiso user:assign_role responde 403 y el rol sigue ahí', async () => {
+      const token = await registerWith('lector@test.com', ['user:read']);
+      const roleId = await customRole();
+
+      const res = await t.deleteJson(`/roles/${roleId}`, token);
+      expect(res.status).toBe(403);
+      expect(await t.roles.findById(roleId)).not.toBeNull();
+    });
+
+    it('sin sesión responde 401', async () => {
+      const roleId = await customRole();
+      expect((await t.deleteJson(`/roles/${roleId}`)).status).toBe(401);
+      expect(await t.roles.findById(roleId)).not.toBeNull();
+    });
+
+    it('un rol de sistema no se borra (403)', async () => {
+      const token = await registerWith('admin@test.com', ['user:assign_role']);
+      const sys = Role.createForOrg({ organizationId: orgId, name: 'Administrador', description: '', isSystem: true });
+      await t.roles.save(sys);
+
+      const res = await t.deleteJson(`/roles/${sys.id}`, token);
+      expect(res.status).toBe(403);
+      expect(res.json.code).toBe('CANNOT_MODIFY_SYSTEM_ROLE');
+      expect(await t.roles.findById(sys.id)).not.toBeNull();
+    });
+
+    it('un rol asignado a alguien no se borra (409) hasta que se le quite', async () => {
+      const token = await registerWith('admin@test.com', ['user:assign_role']);
+      const roleId = await customRole();
+      const reg = await t.postJson('/auth/register', { email: 'otro@test.com', identification: 'otro@test.com', password: 'Secure123!' });
+      const otroId = (reg.json.user as Json).id as string;
+      await t.memberships.save(Membership.create({ userId: otroId, organizationId: orgId, status: 'active' }));
+      await t.userRoles.assign(UserRole.assign({ userId: otroId, organizationId: orgId, roleId }));
+
+      const res = await t.deleteJson(`/roles/${roleId}`, token);
+      expect(res.status).toBe(409);
+      expect(res.json.code).toBe('ROLE_IN_USE');
+      expect(await t.roles.findById(roleId)).not.toBeNull();
+
+      await t.userRoles.remove(otroId, orgId, roleId);
+      expect((await t.deleteJson(`/roles/${roleId}`, token)).status).toBe(204);
+    });
+
+    it('un rol de OTRA organización responde 404 como si no existiera', async () => {
+      const token = await registerWith('admin@test.com', ['user:assign_role']);
+      const ajeno = Role.createForOrg({ organizationId: '99999999-9999-4999-8999-999999999999', name: 'Ajeno', description: '', isSystem: false });
+      await t.roles.save(ajeno);
+
+      const res = await t.deleteJson(`/roles/${ajeno.id}`, token);
+      expect(res.status).toBe(404);
+      expect(await t.roles.findById(ajeno.id)).not.toBeNull();
+    });
+
+    it('un rol inexistente responde 404', async () => {
+      const token = await registerWith('admin@test.com', ['user:assign_role']);
+      expect((await t.deleteJson('/roles/00000000-0000-4000-8000-000000000000', token)).status).toBe(404);
     });
   });
 });
