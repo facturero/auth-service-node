@@ -32,15 +32,20 @@ export class InviteUserUseCase {
         });
       }
 
+      // Invitar de nuevo a quien sigue INVITADO (sin aceptar) reenvía la invitación con un enlace nuevo: antes daba 409 y
+      // no había forma de reenviarla, ni siquiera cuando el enlace se perdía o caducaba. Quien ya aceptó (o está
+      // deshabilitado) sigue dando 409.
       const existingMembership = await repos.memberships.find(user.id, input.organizationId);
-      if (existingMembership) throw new UserAlreadyInvitedError();
+      if (existingMembership && existingMembership.status !== 'invited') throw new UserAlreadyInvitedError();
 
-      const membership = Membership.create({
-        userId: user.id,
-        organizationId: input.organizationId,
-        status: 'invited',
-      });
-      await repos.memberships.save(membership);
+      if (!existingMembership) {
+        const membership = Membership.create({
+          userId: user.id,
+          organizationId: input.organizationId,
+          status: 'invited',
+        });
+        await repos.memberships.save(membership);
+      }
 
       const existingRoles = await repos.userRoles.listByUserAndOrg(user.id, input.organizationId);
       const existingRoleIds = new Set(existingRoles.map((ur) => ur.roleId));

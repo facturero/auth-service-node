@@ -34,7 +34,7 @@ import { ProvisionDeviceAccountUseCase } from './application/use-cases/provision
 import { UpdateUserEstablishmentsUseCase } from './application/use-cases/update-user-establishments';
 import { OutboxRelay, InboxConsumer } from '@facturero/outbox-relay';
 import { orgUpdatedHandler } from './infrastructure/messaging/consumer';
-import { SimpleInviteTokenService } from './infrastructure/security/invite-token-service';
+import { SignedInviteTokenService } from './infrastructure/security/invite-token-service';
 import { SimplePasswordResetLinkService } from './infrastructure/security/password-reset-link-service';
 import { createApp } from './interface/http/app';
 
@@ -62,7 +62,15 @@ async function main(): Promise<void> {
 
   // Servicios
   const seedOrgRoles = new SeedOrganizationRolesUseCase(uow);
-  const inviteTokenService = new SimpleInviteTokenService(config.FRONTEND_URL);
+  const inviteTokenService = new SignedInviteTokenService({
+    frontendUrl: config.FRONTEND_URL,
+    secret: config.INVITE_TOKEN_SECRET,
+    jwtPrivateKey: config.JWT_PRIVATE_KEY,
+    ttlSeconds: config.INVITE_TOKEN_TTL_HOURS * 3600,
+    allowLegacy: config.INVITE_ALLOW_LEGACY_TOKENS,
+    // Cada uso de un enlace viejo (sin firma) queda en el log: sirve para saber cuándo se puede apagar la transición.
+    onLegacyToken: (userId) => console.warn(`[invite] se aceptó un token de invitación SIN firma (usuario ${userId})`),
+  });
   const passwordResetLinkService = new SimplePasswordResetLinkService(config.FRONTEND_URL);
 
   const app = createApp({
@@ -90,7 +98,7 @@ async function main(): Promise<void> {
       createRole: new CreateRoleUseCase(uow),
       updateRolePermissions: new UpdateRolePermissionsUseCase(uow),
       listPermissions: new ListPermissionsUseCase(repos.permissions),
-      acceptInvite: new AcceptInviteUseCase(uow, hasher, tokenService, accessContext, repos.refreshTokens),
+      acceptInvite: new AcceptInviteUseCase(uow, hasher, tokenService, accessContext, repos.refreshTokens, inviteTokenService),
       resetPassword: new ResetPasswordUseCase(uow, hasher, tokenService, accessContext, repos.refreshTokens),
       requestPasswordReset: new RequestPasswordResetUseCase(uow, passwordResetLinkService),
       provisionDeviceAccount: new ProvisionDeviceAccountUseCase(uow, tokenService),

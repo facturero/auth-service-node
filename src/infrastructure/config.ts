@@ -39,6 +39,13 @@ const schema = z.object({
 
   FRONTEND_URL: z.string().default('http://localhost:5173'),
 
+  // Invitaciones: token firmado (HMAC) y con caducidad. Sin INVITE_TOKEN_SECRET la clave se deriva de la clave privada
+  // JWT, que solo conoce este servicio. INVITE_ALLOW_LEGACY_TOKENS=false deja de aceptar los enlaces viejos SIN firma
+  // (hay que reenviar las invitaciones pendientes antes de apagarlo).
+  INVITE_TOKEN_SECRET: z.string().optional(),
+  INVITE_TOKEN_TTL_HOURS: z.coerce.number().int().positive().default(168),
+  INVITE_ALLOW_LEGACY_TOKENS: z.enum(['true', 'false']).default('true'),
+
   RABBITMQ_URL: z.string().optional(),
 
   INTERNAL_SERVICE_SECRET: z.string().min(1),
@@ -99,6 +106,9 @@ export interface AppConfig {
   GOOGLE_CLIENT_ID: string;
   CORS_ORIGIN: string;
   FRONTEND_URL: string;
+  INVITE_TOKEN_SECRET?: string;
+  INVITE_TOKEN_TTL_HOURS: number;
+  INVITE_ALLOW_LEGACY_TOKENS: boolean;
   RABBITMQ_URL?: string;
   INTERNAL_SERVICE_SECRET: string;
   ORG_SERVICE_URL: string;
@@ -121,6 +131,9 @@ export const config: AppConfig = {
   GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID,
   CORS_ORIGIN: env.CORS_ORIGIN,
   FRONTEND_URL: env.FRONTEND_URL,
+  INVITE_TOKEN_SECRET: env.INVITE_TOKEN_SECRET,
+  INVITE_TOKEN_TTL_HOURS: env.INVITE_TOKEN_TTL_HOURS,
+  INVITE_ALLOW_LEGACY_TOKENS: env.INVITE_ALLOW_LEGACY_TOKENS === 'true',
   RABBITMQ_URL: env.RABBITMQ_URL,
   INTERNAL_SERVICE_SECRET: env.INTERNAL_SERVICE_SECRET,
   ORG_SERVICE_URL: env.ORG_SERVICE_URL,

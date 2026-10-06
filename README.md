@@ -144,6 +144,9 @@ Copia `.env.example` a `.env`. Las claves JWT se **leen de archivo** por defecto
 | `GOOGLE_CLIENT_ID` | `xxxx.apps.googleusercontent.com` | audiencia esperada del ID Token |
 | `CORS_ORIGIN` | `http://localhost:5173` | origen permitido del front |
 | `RABBITMQ_URL` | `amqp://localhost` | conexión a RabbitMQ (opcional) |
+| `INVITE_TOKEN_SECRET` | *(vacío)* | secreto con el que se firman los enlaces de invitación (HMAC-SHA256). Vacío = se deriva de la clave privada JWT, que solo conoce este servicio |
+| `INVITE_TOKEN_TTL_HOURS` | `168` | vigencia de un enlace de invitación — **7 días**. Pasado ese plazo hay que reenviarla (invitar de nuevo al mismo correo) |
+| `INVITE_ALLOW_LEGACY_TOKENS` | `true` | acepta todavía los enlaces **viejos sin firma** (el JSON `{uid, oid}` en base64) para no romper invitaciones ya enviadas; cada uso queda en el log (`[invite] … SIN firma`). **Ponerlo en `false`** cuando las invitaciones pendientes se hayan reenviado: con `true` quien conozca el id de un usuario y el de su organización puede fabricar la invitación de una cuenta pendiente |
 
 > **RS256**: la privada solo vive en auth-service; la pública se distribuye al [gateway] y demás servicios para que verifiquen **sin** llamar a auth en el camino crítico. `JWT_ISSUER`/`JWT_AUDIENCE` deben coincidir con lo que valida el gateway.
 

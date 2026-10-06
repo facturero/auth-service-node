@@ -7,7 +7,8 @@ import {
   CredentialAlreadyExistsError,
   AccountDisabledError,
 } from '../../domain/errors';
-import { PasswordHasher, UnitOfWork, TokenService, AccessContextResolver } from '../ports';
+import { PasswordHasher, UnitOfWork, TokenService, AccessContextResolver, InviteTokenReader } from '../ports';
+import { readLegacyInviteToken } from '../legacy-invite-token';
 import { issueSession } from '../session';
 import { AuthProvider } from '../dtos';
 
@@ -25,17 +26,17 @@ export class AcceptInviteUseCase {
     private readonly tokenService: TokenService,
     private readonly accessContext: AccessContextResolver,
     private readonly refreshTokens: RefreshTokenRepository,
+    /**
+     * Quien valida el token (firma + caducidad). Sin él se lee el formato viejo SIN firma: solo para pruebas; en
+     * producción main.ts siempre pasa el verificador firmado.
+     */
+    private readonly inviteTokens?: InviteTokenReader,
   ) {}
 
   async execute(input: AcceptInviteInput) {
-    const raw = Buffer.from(input.token, 'base64url').toString('utf-8');
-    let payload: { uid: string; oid: string };
-    try {
-      payload = JSON.parse(raw);
-    } catch {
-      throw new InvalidInviteTokenError();
-    }
-    const { uid: userId, oid: organizationId } = payload;
+    const { userId, organizationId } = this.inviteTokens
+      ? this.inviteTokens.read(input.token)
+      : readLegacyInviteToken(input.token);
     if (!userId || !organizationId) {
       throw new InvalidInviteTokenError();
     }

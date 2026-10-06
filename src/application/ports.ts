@@ -71,6 +71,11 @@ export interface InviteTokenService {
   generateInviteToken(payload: InviteTokenPayload): string;
 }
 
+/** Lee y VALIDA el token de una invitación (firma y caducidad). Lanza InvalidInviteTokenError si no vale. */
+export interface InviteTokenReader {
+  read(token: string): { userId: string; organizationId: string };
+}
+
 /**
  * Puerto para construir el enlace de restablecimiento de contraseña que se
  * envía por correo cuando un administrador dispara el flujo "restaurar
