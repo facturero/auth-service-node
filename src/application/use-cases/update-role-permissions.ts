@@ -14,7 +14,9 @@ export class UpdateRolePermissionsUseCase {
   async execute(input: UpdateRolePermissionsInput): Promise<void> {
     await this.uow.execute(async (repos: Repositories) => {
       const role = await repos.roles.findById(input.roleId);
-      if (!role) throw new RoleNotFoundError();
+      // Un rol de OTRA organización se trata como inexistente: sin esta comprobación, quien tuviera `user:assign_role` en su
+      // organización podía cambiar los permisos de un rol ajeno conociendo su id.
+      if (!role || role.organizationId !== input.organizationId) throw new RoleNotFoundError();
       if (role.isSystem) throw new CannotModifySystemRoleError();
 
       const ids = await repos.permissions.findIdsByCodes(input.permissionCodes);

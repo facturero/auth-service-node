@@ -204,6 +204,14 @@ function buildTestApp() {
     return { status: res.status, json: text ? JSON.parse(text) as Json : {} };
   }
 
+  async function patchJson(path: string, body: unknown, token?: string): Promise<{ status: number; json: Json }> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await app.fetch(new Request(`http://localhost${path}`, { method: 'PATCH', headers, body: JSON.stringify(body) }));
+    const text = await res.text();
+    return { status: res.status, json: text ? JSON.parse(text) as Json : {} };
+  }
+
   async function deleteJson(path: string, token?: string): Promise<{ status: number; json: Json }> {
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -212,7 +220,7 @@ function buildTestApp() {
     return { status: res.status, json: text ? JSON.parse(text) as Json : {} };
   }
 
-  return { app, postJson, getJson, deleteJson, uow, credentials, users, roles, permissions, memberships, userRoles, tokenService };
+  return { app, postJson, getJson, deleteJson, patchJson, uow, credentials, users, roles, permissions, memberships, userRoles, tokenService };
 }
 
 function addPermission(repo: InMemoryPermissionRepository, code: string): string {
@@ -739,6 +747,55 @@ describe('E2E: RBAC API', () => {
     it('un rol inexistente responde 404', async () => {
       const token = await registerWith('admin@test.com', ['user:assign_role']);
       expect((await t.deleteJson('/roles/00000000-0000-4000-8000-000000000000', token)).status).toBe(404);
+    });
+  });
+  describe('PATCH /roles/:id/permissions (requirePermission: user:assign_role)', () => {
+    const orgId = uuidOrg;
+
+    async function adminToken(): Promise<string> {
+      const email = 'admin@test.com';
+      const reg = await t.postJson('/auth/register', { email, identification: email, password: 'Secure123!' });
+      const userId = (reg.json.user as Json).id as string;
+      const permIds = ['user:assign_role', 'invoice:read'].map((code) => addPermission(t.permissions, code));
+      const role = Role.createForOrg({ organizationId: orgId, name: 'Gestor de roles', description: '', isSystem: false });
+      await t.roles.save(role);
+      await t.roles.setPermissions(role.id, permIds);
+      await t.memberships.save(Membership.create({ userId, organizationId: orgId, status: 'active' }));
+      await t.userRoles.assign(UserRole.assign({ userId, organizationId: orgId, roleId: role.id }));
+      const user = await t.users.findById(userId);
+      if (user) user.bumpPermissionsVersion();
+      const login = await t.postJson('/auth/login', { email, password: 'Secure123!' });
+      return login.json.accessToken as string;
+    }
+
+    it('cambia los permisos de un rol propio y personalizado (204)', async () => {
+      const token = await adminToken();
+      const role = Role.createForOrg({ organizationId: orgId, name: 'Propio', description: '', isSystem: false });
+      await t.roles.save(role);
+
+      const res = await t.patchJson(`/roles/${role.id}/permissions`, { permissions: ['invoice:read'] }, token);
+      expect(res.status).toBe(204);
+      expect(t.roles.getPermissions(role.id)).toEqual(['perm-invoice-read']);
+    });
+
+    it('un rol de OTRA organización responde 404 y sus permisos NO cambian', async () => {
+      const token = await adminToken();
+      const ajeno = Role.createForOrg({ organizationId: '99999999-9999-4999-8999-999999999999', name: 'Ajeno', description: '', isSystem: false });
+      await t.roles.save(ajeno);
+      await t.roles.setPermissions(ajeno.id, ['perm-original']);
+
+      const res = await t.patchJson(`/roles/${ajeno.id}/permissions`, { permissions: ['invoice:read'] }, token);
+      expect(res.status).toBe(404);
+      expect(t.roles.getPermissions(ajeno.id)).toEqual(['perm-original']);
+    });
+
+    it('un rol de sistema sigue sin poder modificarse (403)', async () => {
+      const token = await adminToken();
+      const sys = Role.createForOrg({ organizationId: orgId, name: 'Administrador', description: '', isSystem: true });
+      await t.roles.save(sys);
+
+      const res = await t.patchJson(`/roles/${sys.id}/permissions`, { permissions: ['invoice:read'] }, token);
+      expect(res.status).toBe(403);
     });
   });
 });
