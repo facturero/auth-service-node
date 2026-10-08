@@ -69,7 +69,7 @@ export function refreshController(useCase: RefreshTokenUseCase) {
 export function logoutController(useCase: LogoutUseCase) {
   return async (c: Context) => {
     const body = c.req.valid('json' as never) as { refreshToken: string };
-    await useCase.execute(body);
+    await useCase.execute({ ...body, ...clientMeta(c) });
     return c.body(null, 204);
   };
 }
@@ -308,6 +308,11 @@ export function getAccessContextController(accessContext: AccessContextResolver)
 // ── Trusted IPs ──
 
 import { TrustedIpRepository } from '../../domain/repositories';
+import {
+  ManageTrustedIpsUseCase,
+  TrustedIpAlreadyExistsError,
+  TrustedIpNotFoundError,
+} from '../../application/use-cases/manage-trusted-ips';
 
 export function listTrustedIpsController(repo: TrustedIpRepository) {
   return async (c: Context) => {
@@ -316,42 +321,45 @@ export function listTrustedIpsController(repo: TrustedIpRepository) {
   };
 }
 
-export function createTrustedIpController(repo: TrustedIpRepository) {
+export function createTrustedIpController(useCase: ManageTrustedIpsUseCase) {
   return async (c: Context) => {
     const body = c.req.valid('json' as never) as { ip: string; label?: string; enabled?: boolean };
-    const existing = await repo.findByIp(body.ip);
-    if (existing) {
-      return c.json({ code: 'IP_EXISTS', message: `La IP ${body.ip} ya está registrada.` }, 409);
+    try {
+      const entry = await useCase.create(body);
+      return c.json(entry, 201);
+    } catch (err) {
+      if (err instanceof TrustedIpAlreadyExistsError) return c.json({ code: 'IP_EXISTS', message: err.message }, 409);
+      throw err;
     }
-    const id = crypto.randomUUID();
-    const entry = await repo.create({
-      id,
-      ip: body.ip,
-      label: body.label ?? null,
-      enabled: body.enabled ?? true,
-    });
-    return c.json(entry, 201);
   };
 }
 
-export function deleteTrustedIpController(repo: TrustedIpRepository) {
+export function deleteTrustedIpController(useCase: ManageTrustedIpsUseCase) {
   return async (c: Context) => {
     const id = c.req.param('id');
     if (!id) return c.json({ code: 'MISSING_PARAM', message: 'id es obligatorio.' }, 400);
-    const deleted = await repo.delete(id);
-    if (!deleted) return c.json({ code: 'NOT_FOUND', message: 'IP no encontrada.' }, 404);
-    return c.body(null, 204);
+    try {
+      await useCase.delete(id);
+      return c.body(null, 204);
+    } catch (err) {
+      if (err instanceof TrustedIpNotFoundError) return c.json({ code: 'NOT_FOUND', message: err.message }, 404);
+      throw err;
+    }
   };
 }
 
-export function updateTrustedIpController(repo: TrustedIpRepository) {
+export function updateTrustedIpController(useCase: ManageTrustedIpsUseCase) {
   return async (c: Context) => {
     const id = c.req.param('id');
     if (!id) return c.json({ code: 'MISSING_PARAM', message: 'id es obligatorio.' }, 400);
     const body = c.req.valid('json' as never) as { ip?: string; label?: string; enabled?: boolean };
-    const updated = await repo.update(id, body);
-    if (!updated) return c.json({ code: 'NOT_FOUND', message: 'IP no encontrada.' }, 404);
-    return c.json(updated, 200);
+    try {
+      const updated = await useCase.update(id, body);
+      return c.json(updated, 200);
+    } catch (err) {
+      if (err instanceof TrustedIpNotFoundError) return c.json({ code: 'NOT_FOUND', message: err.message }, 404);
+      throw err;
+    }
   };
 }
 

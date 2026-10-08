@@ -8,6 +8,7 @@ import { AccessContextResolver, GoogleIdTokenVerifier, TokenService, UnitOfWork 
 import { SeedOrganizationRolesUseCase } from './seed-organization-roles';
 import { GoogleAuthInput, SessionOutput } from '../dtos';
 import { issueSession } from '../session';
+import { SessionAuditor } from '../session-audit';
 
 /**
  * Inicia sesión o crea cuenta con Google (flujo ID Token).
@@ -24,6 +25,7 @@ export class LoginWithGoogleUseCase {
     private readonly accessContext: AccessContextResolver,
     private readonly seedOrgRoles: SeedOrganizationRolesUseCase,
     private readonly refreshTokens: RefreshTokenRepository,
+    private readonly audit?: SessionAuditor,
   ) {}
 
   async execute(input: GoogleAuthInput): Promise<SessionOutput> {
@@ -97,7 +99,9 @@ export class LoginWithGoogleUseCase {
       await this.accessContext.resolve(result.credential.userId, result.organizationId ?? null)
     ).orgId === null;
 
-    return issueSession({
+    const contextOut = { orgId: null as string | null };
+    const session = await issueSession({
+      contextOut,
       credential: result.credential,
       tokenService: this.tokenService,
       refreshTokens: this.refreshTokens,
@@ -110,6 +114,15 @@ export class LoginWithGoogleUseCase {
       userAgent: input.userAgent,
       ip: input.ip,
     });
+    await this.audit?.record('auth.session.login_succeeded', {
+      userId: result.credential.userId,
+      email: result.credential.email,
+      organizationId: contextOut.orgId,
+      ip: input.ip,
+      userAgent: input.userAgent,
+      provider: 'google',
+    });
+    return session;
   }
 
   private async createLinkedAccount(

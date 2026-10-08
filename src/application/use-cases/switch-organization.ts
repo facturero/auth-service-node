@@ -4,6 +4,7 @@ import { SessionOutput } from '../dtos';
 import { issueSession } from '../session';
 import { NotOrganizationMemberError } from '../../domain/errors';
 import { UnitOfWork } from '../ports';
+import { buildSessionEvent } from '../session-audit';
 
 export interface SwitchOrganizationInput {
   userId: string;
@@ -31,7 +32,9 @@ export class SwitchOrganizationUseCase {
         throw new NotOrganizationMemberError();
       }
 
-      return issueSession({
+      const contextOut = { orgId: null as string | null };
+      const session = await issueSession({
+        contextOut,
         credential,
         tokenService: this.tokenService,
         refreshTokens: repos.refreshTokens,
@@ -41,6 +44,17 @@ export class SwitchOrganizationUseCase {
         userAgent: input.userAgent,
         ip: input.ip,
       });
+
+      await repos.outbox.add(
+        buildSessionEvent('auth.session.org_switched', {
+          userId: credential.userId,
+          email: credential.email,
+          organizationId: input.organizationId,
+          ip: input.ip,
+          userAgent: input.userAgent,
+        }),
+      );
+      return session;
     });
   }
 }

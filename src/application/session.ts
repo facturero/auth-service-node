@@ -23,6 +23,8 @@ export async function issueSession(params: {
   accessContext?: AccessContextResolver;
   preferredOrgId?: string | null;
   avatarFileId?: string | null;
+  /** Si se pasa, se rellena con la organización activa de la sesión (para la bitácora de auditoría). */
+  contextOut?: { orgId: string | null };
 }): Promise<SessionOutput> {
   const { credential, tokenService, refreshTokens, authProvider, accessContext, preferredOrgId } = params;
 
@@ -38,6 +40,7 @@ export async function issueSession(params: {
     permissions = ctx.permissions;
     pv = ctx.pv;
   }
+  if (params.contextOut) params.contextOut.orgId = orgId;
 
   const access = await tokenService.issueAccessToken({
     sub: credential.userId,

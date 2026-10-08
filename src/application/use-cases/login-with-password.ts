@@ -4,6 +4,7 @@ import { AccessContextResolver, PasswordHasher, TokenService } from '../ports';
 import { CredentialRepository, RefreshTokenRepository } from '../../domain/repositories';
 import { LoginInput, SessionOutput } from '../dtos';
 import { issueSession } from '../session';
+import { SessionAuditor } from '../session-audit';
 
 /**
  * Login con email + contraseña.
@@ -16,6 +17,7 @@ export class LoginWithPasswordUseCase {
     private readonly hasher: PasswordHasher,
     private readonly tokenService: TokenService,
     private readonly accessContext: AccessContextResolver,
+    private readonly audit?: SessionAuditor,
   ) {}
 
   async execute(input: LoginInput): Promise<SessionOutput> {
@@ -23,19 +25,27 @@ export class LoginWithPasswordUseCase {
     const credential = await this.credentials.findByEmail(email.value);
 
     // Si no existe o no tiene contraseña (cuenta solo-Google) -> credenciales inválidas.
+    const meta = { email: email.value, ip: input.ip, userAgent: input.userAgent, provider: 'password' };
+    const fail = async (reason: string, err: Error): Promise<never> => {
+      await this.audit?.record('auth.session.login_failed', { ...meta, userId: credential?.userId, reason });
+      throw err;
+    };
+
     if (!credential || !credential.hasPassword()) {
-      throw new InvalidCredentialsError();
+      return fail('invalid_credentials', new InvalidCredentialsError());
     }
     if (!credential.isActive()) {
-      throw new AccountDisabledError();
+      return fail('account_disabled', new AccountDisabledError());
     }
 
     const valid = await this.hasher.verify(input.password, credential.passwordHash as string);
     if (!valid) {
-      throw new InvalidCredentialsError();
+      return fail('invalid_credentials', new InvalidCredentialsError());
     }
 
-    return issueSession({
+    const contextOut = { orgId: null as string | null };
+    const session = await issueSession({
+      contextOut,
       credential,
       tokenService: this.tokenService,
       refreshTokens: this.refreshTokens,
@@ -44,5 +54,11 @@ export class LoginWithPasswordUseCase {
       userAgent: input.userAgent,
       ip: input.ip,
     });
+    await this.audit?.record('auth.session.login_succeeded', {
+      ...meta,
+      userId: credential.userId,
+      organizationId: contextOut.orgId,
+    });
+    return session;
   }
 }

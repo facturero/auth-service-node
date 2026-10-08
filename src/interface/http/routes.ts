@@ -22,6 +22,7 @@ import { AcceptInviteUseCase } from '../../application/use-cases/accept-invite';
 import { ResetPasswordUseCase } from '../../application/use-cases/reset-password';
 import { RequestPasswordResetUseCase } from '../../application/use-cases/request-password-reset';
 import { ProvisionDeviceAccountUseCase } from '../../application/use-cases/provision-device-account';
+import { ManageTrustedIpsUseCase } from '../../application/use-cases/manage-trusted-ips';
 import { UpdateUserEstablishmentsUseCase } from '../../application/use-cases/update-user-establishments';
 import {
   acceptInviteSchema,
@@ -103,6 +104,7 @@ export interface AppDependencies {
     resetPassword: ResetPasswordUseCase;
     requestPasswordReset: RequestPasswordResetUseCase;
     provisionDeviceAccount: ProvisionDeviceAccountUseCase;
+    trustedIps: ManageTrustedIpsUseCase;
   };
   tokenService: TokenService;
   accessContext: AccessContextResolver;
@@ -191,9 +193,9 @@ export function trustedIpsRoutes(deps: AppDependencies): Hono<{ Variables: AuthV
   const repo = deps.trustedIpsRepository;
 
   r.get('/trusted-ips', auth, requirePermission('user:read'), listTrustedIpsController(repo));
-  r.post('/trusted-ips', auth, requirePermission('user:update'), validateJson(createTrustedIpSchema), createTrustedIpController(repo));
-  r.patch('/trusted-ips/:id', auth, requirePermission('user:update'), validateJson(updateTrustedIpSchema), updateTrustedIpController(repo));
-  r.delete('/trusted-ips/:id', auth, requirePermission('user:update'), deleteTrustedIpController(repo));
+  r.post('/trusted-ips', auth, requirePermission('user:update'), validateJson(createTrustedIpSchema), createTrustedIpController(deps.useCases.trustedIps));
+  r.patch('/trusted-ips/:id', auth, requirePermission('user:update'), validateJson(updateTrustedIpSchema), updateTrustedIpController(deps.useCases.trustedIps));
+  r.delete('/trusted-ips/:id', auth, requirePermission('user:update'), deleteTrustedIpController(deps.useCases.trustedIps));
 
   // Endpoint público — el gateway lo llama internamente sin JWT
   r.get('/trusted-ips/enabled', listEnabledTrustedIpsController(repo));

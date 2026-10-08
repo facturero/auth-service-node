@@ -24,6 +24,7 @@ import { AcceptInviteUseCase } from '../application/use-cases/accept-invite';
 import { RequestPasswordResetUseCase } from '../application/use-cases/request-password-reset';
 import { ResetPasswordUseCase } from '../application/use-cases/reset-password';
 import { ProvisionDeviceAccountUseCase } from '../application/use-cases/provision-device-account';
+import { ManageTrustedIpsUseCase } from '../application/use-cases/manage-trusted-ips';
 import { UpdateUserEstablishmentsUseCase } from '../application/use-cases/update-user-establishments';
 import {
   InMemoryUnitOfWork,
@@ -89,6 +90,7 @@ function buildTestApp() {
         buildResetLink: (token) => `http://localhost:5173/restablecer-contrasena?token=${encodeURIComponent(token)}`,
       }),
       provisionDeviceAccount: new ProvisionDeviceAccountUseCase(uow, tokenService),
+      trustedIps: new ManageTrustedIpsUseCase(uow),
     },
     tokenService,
     accessContext,

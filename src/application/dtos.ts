@@ -33,6 +33,8 @@ export interface RefreshInput {
 
 export interface LogoutInput {
   refreshToken: string;
+  userAgent?: string | null;
+  ip?: string | null;
 }
 
 export type AuthProvider = 'password' | 'google';

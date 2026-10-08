@@ -93,6 +93,97 @@ channels:
       roleDeleted:
         $ref: '#/components/messages/RoleDeleted'
 
+  trustedIpCreated:
+    address: identity.trusted_ip.created
+    description: Se añadió una IP de confianza (el gateway le aplica el límite de peticiones holgado). Evento de plataforma (sin organizationId), para la bitácora de auditoría.
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      trustedIpCreated:
+        $ref: '#/components/messages/TrustedIpCreated'
+
+  trustedIpUpdated:
+    address: identity.trusted_ip.updated
+    description: Se modificó una IP de confianza (cambio de IP, etiqueta o si está habilitada). Evento de plataforma (sin organizationId), para la bitácora de auditoría.
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      trustedIpUpdated:
+        $ref: '#/components/messages/TrustedIpUpdated'
+
+  trustedIpDeleted:
+    address: identity.trusted_ip.deleted
+    description: Se eliminó una IP de confianza. Evento de plataforma (sin organizationId), para la bitácora de auditoría.
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      trustedIpDeleted:
+        $ref: '#/components/messages/TrustedIpDeleted'
+
+  sessionLoginSucceeded:
+    address: auth.session.login_succeeded
+    description: Inicio de sesión correcto (contraseña o Google). Solo para la bitácora de auditoría. El prefijo es auth. (no identity.) a propósito, para que el gateway no lo trate como cambio de permisos.
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      sessionLoginSucceeded:
+        $ref: '#/components/messages/SessionLoginSucceeded'
+
+  sessionLoginFailed:
+    address: auth.session.login_failed
+    description: Intento de inicio de sesión fallido (contraseña incorrecta, correo inexistente o cuenta deshabilitada). Solo para la bitácora de auditoría. El prefijo es auth. (no identity.) a propósito, para que el gateway no lo trate como cambio de permisos.
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      sessionLoginFailed:
+        $ref: '#/components/messages/SessionLoginFailed'
+
+  sessionLogout:
+    address: auth.session.logout
+    description: Se cerró una sesión (solo si el refresh token seguía activo). Solo para la bitácora de auditoría. El prefijo es auth. (no identity.) a propósito, para que el gateway no lo trate como cambio de permisos.
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      sessionLogout:
+        $ref: '#/components/messages/SessionLogout'
+
+  sessionOrgSwitched:
+    address: auth.session.org_switched
+    description: La persona cambió de organización activa. Solo para la bitácora de auditoría. El prefijo es auth. (no identity.) a propósito, para que el gateway no lo trate como cambio de permisos.
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: crm.events, type: topic, durable: true, vhost: / }
+    messages:
+      sessionOrgSwitched:
+        $ref: '#/components/messages/SessionOrgSwitched'
+
   userDisabled:
     address: identity.user.disabled
     description: Se deshabilitó un usuario (revocación de acceso).
@@ -174,6 +265,41 @@ operations:
     channel: { $ref: '#/channels/roleDeleted' }
     summary: Emite identity.role.deleted (bitácora de auditoría).
 
+  publishTrustedIpCreated:
+    action: send
+    channel: { $ref: '#/channels/trustedIpCreated' }
+    summary: Emite identity.trusted_ip.created (bitácora de auditoría).
+
+  publishTrustedIpUpdated:
+    action: send
+    channel: { $ref: '#/channels/trustedIpUpdated' }
+    summary: Emite identity.trusted_ip.updated (bitácora de auditoría).
+
+  publishTrustedIpDeleted:
+    action: send
+    channel: { $ref: '#/channels/trustedIpDeleted' }
+    summary: Emite identity.trusted_ip.deleted (bitácora de auditoría).
+
+  publishSessionLoginSucceeded:
+    action: send
+    channel: { $ref: '#/channels/sessionLoginSucceeded' }
+    summary: Emite auth.session.login_succeeded (bitácora de auditoría).
+
+  publishSessionLoginFailed:
+    action: send
+    channel: { $ref: '#/channels/sessionLoginFailed' }
+    summary: Emite auth.session.login_failed (bitácora de auditoría).
+
+  publishSessionLogout:
+    action: send
+    channel: { $ref: '#/channels/sessionLogout' }
+    summary: Emite auth.session.logout (bitácora de auditoría).
+
+  publishSessionOrgSwitched:
+    action: send
+    channel: { $ref: '#/channels/sessionOrgSwitched' }
+    summary: Emite auth.session.org_switched (bitácora de auditoría).
+
   publishUserDisabled:
     action: send
     channel: { $ref: '#/channels/userDisabled' }
@@ -247,6 +373,69 @@ components:
         - $ref: '#/components/messageTraits/eventEnvelope'
       payload:
         $ref: '#/components/schemas/RoleDeletedPayload'
+
+    TrustedIpCreated:
+      name: identity.trusted_ip.created
+      title: IP de confianza creada
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/TrustedIpPayload'
+
+    SessionLoginSucceeded:
+      name: auth.session.login_succeeded
+      title: Inicio de sesión
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/SessionPayload'
+
+    SessionLoginFailed:
+      name: auth.session.login_failed
+      title: Intento de inicio de sesión fallido
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/SessionPayload'
+
+    SessionLogout:
+      name: auth.session.logout
+      title: Cierre de sesión
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/SessionPayload'
+
+    SessionOrgSwitched:
+      name: auth.session.org_switched
+      title: Cambio de organización
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/SessionPayload'
+
+    TrustedIpUpdated:
+      name: identity.trusted_ip.updated
+      title: IP de confianza modificada
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/TrustedIpPayload'
+
+    TrustedIpDeleted:
+      name: identity.trusted_ip.deleted
+      title: IP de confianza eliminada
+      contentType: application/json
+      traits:
+        - $ref: '#/components/messageTraits/eventEnvelope'
+      payload:
+        $ref: '#/components/schemas/TrustedIpPayload'
 
     RoleUpdated:
       name: identity.role.updated
@@ -328,6 +517,33 @@ components:
         roleId: { type: string, format: uuid }
         organizationId: { type: string, format: uuid }
         name: { type: string, description: Nombre que tenía el rol. }
+
+    TrustedIpPayload:
+      type: object
+      required: [targetId, ip]
+      properties:
+        targetId: { type: string, format: uuid, description: Id de la IP de confianza afectada. }
+        ip: { type: string, description: IP exacta o CIDR. }
+        label: { type: string, nullable: true }
+        enabled: { type: boolean, description: No viene en identity.trusted_ip.deleted. }
+        previous:
+          type: object
+          description: Solo en identity.trusted_ip.updated. Valores antes del cambio.
+          properties:
+            ip: { type: string }
+            label: { type: string, nullable: true }
+            enabled: { type: boolean }
+
+    SessionPayload:
+      type: object
+      properties:
+        actorId: { type: string, format: uuid, description: Usuario. Ausente en login_failed si el correo no existe. }
+        actorEmail: { type: string }
+        actorIp: { type: string }
+        organizationId: { type: string, format: uuid, description: Organización activa de la sesión (no viene si aún no tiene). }
+        provider: { type: string, enum: [password, google] }
+        reason: { type: string, enum: [invalid_credentials, account_disabled], description: Solo en login_failed. }
+        userAgent: { type: string, description: Recortado a 200 caracteres. }
 
     UserDisabledPayload:
       type: object

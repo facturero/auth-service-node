@@ -33,6 +33,8 @@ import { AcceptInviteUseCase } from './application/use-cases/accept-invite';
 import { ResetPasswordUseCase } from './application/use-cases/reset-password';
 import { RequestPasswordResetUseCase } from './application/use-cases/request-password-reset';
 import { ProvisionDeviceAccountUseCase } from './application/use-cases/provision-device-account';
+import { ManageTrustedIpsUseCase } from './application/use-cases/manage-trusted-ips';
+import { SessionAuditor } from './application/session-audit';
 import { UpdateUserEstablishmentsUseCase } from './application/use-cases/update-user-establishments';
 import { OutboxRelay, InboxConsumer } from '@facturero/outbox-relay';
 import { orgUpdatedHandler } from './infrastructure/messaging/consumer';
@@ -75,6 +77,9 @@ async function main(): Promise<void> {
   });
   const passwordResetLinkService = new SimplePasswordResetLinkService(config.FRONTEND_URL);
 
+  // Los eventos de sesión (login, logout...) los publica fuera de cualquier transacción; ver SessionAuditor.
+  const sessionAudit = new SessionAuditor(repos.outbox);
+
   const app = createApp({
     useCases: {
       register: new RegisterWithPasswordUseCase(uow, hasher, tokenService, accessContext, seedOrgRoles, repos.refreshTokens),
@@ -84,10 +89,11 @@ async function main(): Promise<void> {
         hasher,
         tokenService,
         accessContext,
+        sessionAudit,
       ),
-      google: new LoginWithGoogleUseCase(googleVerifier, uow, tokenService, accessContext, seedOrgRoles, repos.refreshTokens),
+      google: new LoginWithGoogleUseCase(googleVerifier, uow, tokenService, accessContext, seedOrgRoles, repos.refreshTokens, sessionAudit),
       refresh: new RefreshTokenUseCase(uow, tokenService, accessContext),
-      logout: new LogoutUseCase(repos.refreshTokens, tokenService),
+      logout: new LogoutUseCase(repos.refreshTokens, tokenService, sessionAudit, repos.credentials),
       getMe: new GetMeUseCase(repos.credentials, repos.users, orgHttpRepo),
       switchOrg: new SwitchOrganizationUseCase(uow, tokenService, accessContext),
       completeProfile: new CompleteProfileUseCase(uow, tokenService, accessContext, seedOrgRoles, repos.refreshTokens),
@@ -106,6 +112,7 @@ async function main(): Promise<void> {
       resetPassword: new ResetPasswordUseCase(uow, hasher, tokenService, accessContext, repos.refreshTokens),
       requestPasswordReset: new RequestPasswordResetUseCase(uow, passwordResetLinkService),
       provisionDeviceAccount: new ProvisionDeviceAccountUseCase(uow, tokenService),
+      trustedIps: new ManageTrustedIpsUseCase(uow),
     },
     tokenService,
     accessContext,

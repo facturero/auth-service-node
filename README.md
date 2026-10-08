@@ -460,6 +460,8 @@ Los eventos se escriben en `outbox_messages` dentro de la misma transacción (Ou
 | `identity.user.profile_completed` | Perfil completado | realtime |
 | `identity.role.updated` | Cambio de permisos de un rol | gateway (caché de `pv`) |
 | `identity.role.deleted` | Se elimina un rol personalizado | bitácora de auditoría |
+| `identity.trusted_ip.created` / `.updated` / `.deleted` | Cambio en las IPs de confianza del gateway (evento de plataforma, sin `organizationId`) | bitácora de auditoría |
+| `auth.session.login_succeeded` / `.login_failed` / `.logout` / `.org_switched` | Sesiones: quién entra, quién falla al entrar (con el motivo), quién sale y quién cambia de organización. Nunca llevan contraseñas ni tokens. Prefijo `auth.` y no `identity.` para que el gateway no los trate como cambio de permisos | bitácora de auditoría |
 | `identity.user.disabled` | Baja de usuario | gateway, realtime |
 
 **Consume:** `organization.org.updated` → actualiza `country_code` del read-model.
