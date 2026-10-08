@@ -83,6 +83,25 @@ describe('eventos de sesión para la bitácora', () => {
       expect(ev.payload).toMatchObject({ actorEmail: 'ana@empresa.com', actorIp: '198.51.100.9', reason: 'invalid_credentials' });
     });
 
+    it('un intento fallido de una cuenta conocida lleva su organización (aparece en la bitácora de su empresa)', async () => {
+      await seedUser();
+      await expect(login().execute({ email: 'ana@empresa.com', password: 'mala' })).rejects.toBeInstanceOf(InvalidCredentialsError);
+      expect(outbox.events[0].payload).toMatchObject({ reason: 'invalid_credentials', organizationId: 'org-1' });
+    });
+
+    it('si resolver la organización falla, el login sigue respondiendo lo mismo y el intento se registra', async () => {
+      await seedUser();
+      const rota = {
+        async resolve() {
+          throw new Error('db caída');
+        },
+      };
+      const useCase = new LoginWithPasswordUseCase(credentials, refreshTokens, hasher, tokenService, rota, audit);
+      await expect(useCase.execute({ email: 'ana@empresa.com', password: 'mala' })).rejects.toBeInstanceOf(InvalidCredentialsError);
+      expect(outbox.events[0].type).toBe('auth.session.login_failed');
+      expect(outbox.events[0].payload.organizationId).toBeUndefined();
+    });
+
     it('un correo que no existe también queda registrado, sin inventar un usuario', async () => {
       await expect(login().execute({ email: 'nadie@empresa.com', password: 'x' })).rejects.toBeInstanceOf(InvalidCredentialsError);
 
