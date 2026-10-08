@@ -20,7 +20,7 @@ import {
 
 // Quién entra, quién falla al entrar, quién sale y quién cambia de organización: antes nada de eso dejaba huella.
 class OrgAccessContext extends MockAccessContextResolver {
-  async resolve(): Promise<AccessContext> {
+  override async resolve(): Promise<AccessContext> {
     return { orgId: 'org-1', countryCode: 'EC', permissions: [], pv: 0 };
   }
 }
