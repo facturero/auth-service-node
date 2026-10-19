@@ -141,4 +141,19 @@ describe('SequelizeAccessContextResolver', () => {
     expect(ctx.orgId).toBeNull();
     expect(ctx.pv).toBe(7);
   });
+
+  it('drops plugins:admin for organization admins who are not platform admins', async () => {
+    for (const [id, isPlatformAdmin] of [['u-org-admin', false], ['u-platform', true]] as const) {
+      await users.save(User.fromPersistence({
+        id, email: `${id}@t.com`, username: id.toUpperCase(), identification: null, fullName: null, avatarFileId: null, status: 'active',
+        isPlatformAdmin, permissionsVersion: 0,
+        createdAt: new Date(), updatedAt: new Date(),
+      }));
+      await memberships.save(Membership.create({ userId: id, organizationId: 'org-a', status: 'active' }));
+      query.setPermissions(id, 'org-a', ['plugins:read', 'plugins:manage', 'plugins:admin']);
+    }
+
+    expect((await resolver.resolve('u-org-admin')).permissions).toEqual(['plugins:read', 'plugins:manage']);
+    expect((await resolver.resolve('u-platform')).permissions).toEqual(['plugins:read', 'plugins:manage', 'plugins:admin']);
+  });
 });
