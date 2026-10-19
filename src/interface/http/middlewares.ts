@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { Context, MiddlewareHandler } from 'hono';
 import { runWithActor } from '@facturero/outbox-relay';
 import { TokenService } from '../../application/ports';
@@ -69,11 +70,18 @@ export function requirePermission(perm: string): MiddlewareHandler<{ Variables: 
 export function requireInternalSecret(expectedSecret: string): MiddlewareHandler {
   return async (c, next) => {
     const provided = c.req.header('X-Internal-Secret');
-    if (!provided || provided !== expectedSecret) {
+    if (!provided || !secretsMatch(provided, expectedSecret)) {
       throw new InvalidInternalSecretError();
     }
     await next();
   };
+}
+
+/** Compara en tiempo constante (sobre los hashes, para no filtrar la longitud). */
+function secretsMatch(provided: string, expected: string): boolean {
+  const a = createHash('sha256').update(provided).digest();
+  const b = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(a, b);
 }
 
 /**
