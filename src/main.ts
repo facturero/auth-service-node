@@ -19,6 +19,7 @@ import { OrganizationHttpRepository } from './infrastructure/http/organization-h
 import { SwitchOrganizationUseCase } from './application/use-cases/switch-organization';
 import { CompleteProfileUseCase } from './application/use-cases/complete-profile';
 import { ListUsersUseCase } from './application/use-cases/list-users';
+import { ListUserDirectoryUseCase } from './application/use-cases/list-user-directory';
 import { InviteUserUseCase } from './application/use-cases/invite-user';
 import { AssignRoleUseCase } from './application/use-cases/assign-role';
 import { RemoveRoleUseCase } from './application/use-cases/remove-role';
@@ -98,6 +99,7 @@ async function main(): Promise<void> {
       switchOrg: new SwitchOrganizationUseCase(uow, tokenService, accessContext),
       completeProfile: new CompleteProfileUseCase(uow, tokenService, accessContext, seedOrgRoles, repos.refreshTokens),
       listUsers: new ListUsersUseCase(repos.users, repos.userRoles, repos.roles, repos.organizations, repos.credentials, repos.userEstablishments, repos.posDevices),
+      listUserDirectory: new ListUserDirectoryUseCase(repos.users),
       inviteUser: new InviteUserUseCase(uow, inviteTokenService),
       assignRole: new AssignRoleUseCase(uow),
       removeRole: new RemoveRoleUseCase(uow),

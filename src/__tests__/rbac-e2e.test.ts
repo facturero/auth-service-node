@@ -10,6 +10,7 @@ import { LogoutUseCase } from '../application/use-cases/logout';
 import { GetMeUseCase } from '../application/use-cases/get-me';
 import { SwitchOrganizationUseCase } from '../application/use-cases/switch-organization';
 import { ListUsersUseCase } from '../application/use-cases/list-users';
+import { ListUserDirectoryUseCase } from '../application/use-cases/list-user-directory';
 import { InviteUserUseCase } from '../application/use-cases/invite-user';
 import { AssignRoleUseCase } from '../application/use-cases/assign-role';
 import { RemoveRoleUseCase } from '../application/use-cases/remove-role';
@@ -158,6 +159,7 @@ function buildTestApp() {
       getMe: new GetMeUseCase(credentials, users, organizations),
       switchOrg: new SwitchOrganizationUseCase(uow, tokenService, accessContext),
       listUsers: new ListUsersUseCase(users, userRoles, roles, organizations, credentials, userEstablishments, uow.posDevices),
+      listUserDirectory: new ListUserDirectoryUseCase(users),
       inviteUser: new InviteUserUseCase(uow, { generateInviteToken: () => 'http://localhost:5173/accept-invite?token=mock' }),
       assignRole: new AssignRoleUseCase(uow),
       removeRole: new RemoveRoleUseCase(uow),
@@ -291,6 +293,40 @@ describe('E2E: RBAC API', () => {
 
     it('returns 401 without token', async () => {
       const { status } = await t.getJson('/users');
+      expect(status).toBe(401);
+    });
+  });
+
+  describe('GET /users/directory (sin permiso: cualquier miembro)', () => {
+    async function member(email: string, orgId: string): Promise<string> {
+      const reg = await t.postJson('/auth/register', { email, identification: email, password: 'Secure123!' });
+      const userId = (reg.json.user as Json).id as string;
+      await t.memberships.save(Membership.create({ userId, organizationId: orgId, status: 'active' }));
+      return userId;
+    }
+
+    it('un miembro SIN user:read ve a sus compañeros activos, sin roles ni permisos', async () => {
+      const role = Role.createForOrg({ organizationId: uuidOrg, name: 'Vendedor', description: '', isSystem: true });
+      await t.roles.save(role);
+      const sellerId = await member('vendedor@test.com', uuidOrg);
+      await t.userRoles.assign(UserRole.assign({ userId: sellerId, organizationId: uuidOrg, roleId: role.id }));
+      await member('companera@test.com', uuidOrg);
+      const goneId = await member('exempleado@test.com', uuidOrg);
+      const gone = await t.users.findById(goneId);
+      gone?.disable();
+      if (gone) await t.users.save(gone);
+
+      const login = await t.postJson('/auth/login', { email: 'vendedor@test.com', password: 'Secure123!' });
+      const { status, json } = await t.getJson('/users/directory', login.json.accessToken as string);
+
+      expect(status).toBe(200);
+      const rows = json as unknown as Array<Record<string, unknown>>;
+      expect(rows.map((r) => r.email).sort()).toEqual(['companera@test.com', 'vendedor@test.com']);
+      expect(Object.keys(rows[0]!).sort()).toEqual(['avatarFileId', 'email', 'fullName', 'id']);
+    });
+
+    it('401 sin token', async () => {
+      const { status } = await t.getJson('/users/directory');
       expect(status).toBe(401);
     });
   });

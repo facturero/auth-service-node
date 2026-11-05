@@ -8,6 +8,7 @@ import { GetMeUseCase } from '../../application/use-cases/get-me';
 import { SwitchOrganizationUseCase } from '../../application/use-cases/switch-organization';
 import { CompleteProfileUseCase } from '../../application/use-cases/complete-profile';
 import { ListUsersUseCase } from '../../application/use-cases/list-users';
+import { ListUserDirectoryUseCase } from '../../application/use-cases/list-user-directory';
 import { InviteUserUseCase } from '../../application/use-cases/invite-user';
 import { AssignRoleUseCase } from '../../application/use-cases/assign-role';
 import { RemoveRoleUseCase } from '../../application/use-cases/remove-role';
@@ -151,6 +152,14 @@ export function listUsersController(useCase: ListUsersUseCase) {
     const establishmentId = c.req.query('establishmentId') || undefined;
     const result = await useCase.execute(orgId, { callerId: c.get('userId'), establishmentId });
     return c.json(result, 200);
+  };
+}
+
+export function listUserDirectoryController(useCase: ListUserDirectoryUseCase) {
+  return async (c: Context<{ Variables: AuthVariables }>) => {
+    const orgId = c.get('orgId');
+    if (!orgId) throw new NoActiveOrganizationError();
+    return c.json(await useCase.execute(orgId), 200);
   };
 }
 

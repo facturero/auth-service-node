@@ -9,6 +9,7 @@ import { GetMeUseCase } from '../../application/use-cases/get-me';
 import { SwitchOrganizationUseCase } from '../../application/use-cases/switch-organization';
 import { CompleteProfileUseCase } from '../../application/use-cases/complete-profile';
 import { ListUsersUseCase } from '../../application/use-cases/list-users';
+import { ListUserDirectoryUseCase } from '../../application/use-cases/list-user-directory';
 import { InviteUserUseCase } from '../../application/use-cases/invite-user';
 import { AssignRoleUseCase } from '../../application/use-cases/assign-role';
 import { RemoveRoleUseCase } from '../../application/use-cases/remove-role';
@@ -57,6 +58,7 @@ import {
   listPermissionsController,
   listRolesController,
   listUsersController,
+  listUserDirectoryController,
   loginController,
   logoutController,
   meController,
@@ -90,6 +92,7 @@ export interface AppDependencies {
     switchOrg: SwitchOrganizationUseCase;
     completeProfile: CompleteProfileUseCase;
     listUsers: ListUsersUseCase;
+    listUserDirectory: ListUserDirectoryUseCase;
     inviteUser: InviteUserUseCase;
     assignRole: AssignRoleUseCase;
     removeRole: RemoveRoleUseCase;
@@ -146,6 +149,9 @@ export function adminRoutes(deps: AppDependencies): Hono<{ Variables: AuthVariab
   const auth = makeAuthMiddleware(deps.tokenService);
 
   r.get('/users', auth, requirePermission('user:read'), listUsersController(useCases.listUsers));
+  // Sin permiso propio a propósito: es el directorio de compañeros (nombre, correo, foto) que necesita cualquier miembro para
+  // asignar una tarea o sumar a alguien a un proyecto. Lo administrativo (roles, permisos) sigue detrás de `user:read`.
+  r.get('/users/directory', auth, listUserDirectoryController(useCases.listUserDirectory));
   r.post('/users/invite', auth, requirePermission('user:invite'), validateJson(inviteUserSchema), inviteUserController(useCases.inviteUser));
   r.post('/users/:id/roles', auth, requirePermission('user:assign_role'), validateJson(assignRoleSchema), assignRoleController(useCases.assignRole));
   r.delete('/users/:id/roles/:roleId', auth, requirePermission('user:assign_role'), removeRoleController(useCases.removeRole));

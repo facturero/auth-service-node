@@ -9,6 +9,7 @@ import { LogoutUseCase } from '../application/use-cases/logout';
 import { GetMeUseCase } from '../application/use-cases/get-me';
 import { SwitchOrganizationUseCase } from '../application/use-cases/switch-organization';
 import { ListUsersUseCase } from '../application/use-cases/list-users';
+import { ListUserDirectoryUseCase } from '../application/use-cases/list-user-directory';
 import { InviteUserUseCase } from '../application/use-cases/invite-user';
 import { AssignRoleUseCase } from '../application/use-cases/assign-role';
 import { RemoveRoleUseCase } from '../application/use-cases/remove-role';
@@ -73,6 +74,7 @@ function buildTestApp() {
       getMe: new GetMeUseCase(credentials, users, organizations),
       switchOrg: new SwitchOrganizationUseCase(uow, tokenService, accessContext),
       listUsers: new ListUsersUseCase(users, userRoles, roles, organizations, credentials, userEstablishments, uow.posDevices),
+      listUserDirectory: new ListUserDirectoryUseCase(users),
       inviteUser: new InviteUserUseCase(uow, { generateInviteToken: () => 'http://localhost:5173/accept-invite?token=mock' }),
       assignRole: new AssignRoleUseCase(uow),
       removeRole: new RemoveRoleUseCase(uow),
