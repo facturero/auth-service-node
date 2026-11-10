@@ -139,6 +139,7 @@ function buildTestApp() {
   const roles = new InMemoryRoleRepository();
   const permissions = new InMemoryPermissionRepository();
   const memberships = new InMemoryMembershipRepository();
+  users.useMemberships(memberships);
   const userRoles = new InMemoryUserRoleRepository();
   const userEstablishments = new InMemoryUserEstablishmentRepository();
   const organizations = new InMemoryOrganizationRepository();
@@ -328,6 +329,37 @@ describe('E2E: RBAC API', () => {
     it('401 sin token', async () => {
       const { status } = await t.getJson('/users/directory');
       expect(status).toBe(401);
+    });
+  });
+
+  describe('GET /internal/organizations/:id/contacts (servicio a servicio)', () => {
+    async function member(email: string, orgId: string): Promise<string> {
+      const reg = await t.postJson('/auth/register', { email, identification: email, password: 'Secure123!' });
+      const userId = (reg.json.user as Json).id as string;
+      await t.memberships.save(Membership.create({ userId, organizationId: orgId, status: 'active' }));
+      return userId;
+    }
+    const internalGet = (path: string, secret?: string) =>
+      t.app.fetch(new Request(`http://localhost${path}`, { headers: secret ? { 'X-Internal-Secret': secret } : {} }));
+
+    it('con el secreto, devuelve id, correo y nombre de los activos de ESA organización y de ninguna otra', async () => {
+      const anaId = await member('ana@test.com', uuidOrg);
+      await member('ajeno@test.com', '22222222-2222-4222-8222-222222222222');
+      const goneId = await member('exempleado@test.com', uuidOrg);
+      const gone = await t.users.findById(goneId);
+      gone?.disable();
+      if (gone) await t.users.save(gone);
+
+      const res = await internalGet(`/internal/organizations/${uuidOrg}/contacts`, 'test-secret');
+      expect(res.status).toBe(200);
+      const { users } = (await res.json()) as { users: Array<Record<string, unknown>> };
+      expect(users.map((u) => u.email)).toEqual(['ana@test.com']);
+      expect(users[0]).toEqual({ id: anaId, email: 'ana@test.com', fullName: null });
+    });
+
+    it('sin el secreto, o con uno equivocado, no responde', async () => {
+      expect((await internalGet(`/internal/organizations/${uuidOrg}/contacts`)).status).not.toBe(200);
+      expect((await internalGet(`/internal/organizations/${uuidOrg}/contacts`, 'otro')).status).not.toBe(200);
     });
   });
 

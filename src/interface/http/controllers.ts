@@ -301,6 +301,21 @@ export function listPermissionsController(useCase: ListPermissionsUseCase) {
     };
   }
 
+/**
+ * Interno: los correos de los usuarios activos de UNA organización. Lo pide notification-service para mandar por correo los avisos
+ * de Proyectos, cuyos eventos solo traen ids de usuario (projects-service no guarda correos y no debe: cambian en auth).
+ *
+ * Va acotado por organización a propósito: notification-service pasa la del evento, así que un evento no puede sacar el correo de
+ * alguien de otra empresa aunque traiga su id. No devuelve nada más que lo que un compañero ya ve en la aplicación.
+ */
+export function getOrganizationContactsController(useCase: ListUserDirectoryUseCase) {
+  return async (c: Context) => {
+    const organizationId = c.req.param('organizationId') ?? '';
+    const users = await useCase.execute(organizationId);
+    return c.json({ users: users.map(({ id, email, fullName }) => ({ id, email, fullName })) }, 200);
+  };
+}
+
 // Interno (BUG #9): el gateway consulta el pv actual del usuario para
 // compararlo con el del JWT y decidir si el token está stale (401 TOKEN_STALE).
 // Devuelve el contexto completo de acceso; el gateway solo usa `pv`.

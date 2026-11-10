@@ -76,6 +76,7 @@ import {
   updateTrustedIpController,
   listEnabledTrustedIpsController,
   getAccessContextController,
+  getOrganizationContactsController,
 } from './controllers';
 import { AuthVariables, makeAuthMiddleware, requireInternalSecret, requirePermission } from './middlewares';
 import { TrustedIpRepository } from '../../domain/repositories';
@@ -184,6 +185,11 @@ export function internalRoutes(deps: AppDependencies): Hono {
   r.get('/internal/users/:userId/access-context',
     requireInternalSecret(deps.internalSecret),
     getAccessContextController(deps.accessContext));
+
+  // Correos de los compañeros de una organización, para que notification-service mande por correo los avisos de Proyectos.
+  r.get('/internal/organizations/:organizationId/contacts',
+    requireInternalSecret(deps.internalSecret),
+    getOrganizationContactsController(useCases.listUserDirectory));
 
   return r;
 }

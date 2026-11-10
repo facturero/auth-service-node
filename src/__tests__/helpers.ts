@@ -238,9 +238,18 @@ export class InMemoryUserRepository implements UserRepository {
     }
   }
 
-  async listByOrganization(_organizationId: string): Promise<User[]> {
-    // This would need membership data; simplified for tests
-    return Array.from(this.store.values());
+  /** Con membresías conectadas, `listByOrganization` filtra como el JOIN de SQL; sin ellas devuelve a todos (tests antiguos). */
+  private memberships?: InMemoryMembershipRepository;
+  useMemberships(memberships: InMemoryMembershipRepository): void {
+    this.memberships = memberships;
+  }
+
+  async listByOrganization(organizationId: string): Promise<User[]> {
+    const all = Array.from(this.store.values());
+    if (!this.memberships) return all;
+    const out: User[] = [];
+    for (const u of all) if (await this.memberships.find(u.id, organizationId)) out.push(u);
+    return out;
   }
 
   clear(): void { this.store.clear(); }
