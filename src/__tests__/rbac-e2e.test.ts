@@ -28,6 +28,8 @@ import { ResetPasswordUseCase } from '../application/use-cases/reset-password';
 import { ProvisionDeviceAccountUseCase } from '../application/use-cases/provision-device-account';
 import { ManageTrustedIpsUseCase } from '../application/use-cases/manage-trusted-ips';
 import { UpdateUserEstablishmentsUseCase } from '../application/use-cases/update-user-establishments';
+import { GetMyDashboardUseCase } from '../application/use-cases/get-my-dashboard';
+import { SaveMyDashboardUseCase } from '../application/use-cases/save-my-dashboard';
 import {
   AccessTokenClaims,
   GeneratedRefreshToken,
@@ -179,6 +181,8 @@ function buildTestApp() {
       }),
       provisionDeviceAccount: new ProvisionDeviceAccountUseCase(uow, tokenService),
       trustedIps: new ManageTrustedIpsUseCase(uow),
+      getMyDashboard: new GetMyDashboardUseCase(uow.dashboards),
+      saveMyDashboard: new SaveMyDashboardUseCase(uow.dashboards),
     },
     tokenService,
     accessContext,
@@ -225,7 +229,15 @@ function buildTestApp() {
     return { status: res.status, json: text ? JSON.parse(text) as Json : {} };
   }
 
-  return { app, postJson, getJson, deleteJson, patchJson, uow, credentials, users, roles, permissions, memberships, userRoles, tokenService };
+  async function putJson(path: string, body: unknown, token?: string): Promise<{ status: number; json: Json }> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await app.fetch(new Request(`http://localhost${path}`, { method: 'PUT', headers, body: JSON.stringify(body) }));
+    const text = await res.text();
+    return { status: res.status, json: text ? JSON.parse(text) as Json : {} };
+  }
+
+  return { app, postJson, getJson, putJson, deleteJson, patchJson, uow, credentials, users, roles, permissions, memberships, userRoles, tokenService };
 }
 
 function addPermission(repo: InMemoryPermissionRepository, code: string): string {
@@ -866,6 +878,75 @@ describe('E2E: RBAC API', () => {
 
       const res = await t.patchJson(`/roles/${sys.id}/permissions`, { permissions: ['invoice:read'] }, token);
       expect(res.status).toBe(403);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Tablero de Inicio propio (sin permiso: cada usuario el suyo)
+  // -------------------------------------------------------------------------
+  describe('GET/PUT /users/me/dashboard', () => {
+    const otherOrg = '660e8400-e29b-41d4-a716-446655440000';
+    const layout = [
+      { i: 'w1', widget: 'billing.sales_today', x: 0, y: 0, w: 4, h: 2 },
+      { i: 'w2', widget: 'projects.my_tasks', x: 4, y: 0, w: 8, h: 4, config: { limit: 5 } },
+    ];
+
+    async function tokenFor(sub: string, orgId: string | null): Promise<string> {
+      const { token } = await t.tokenService.issueAccessToken({
+        sub, email: `${sub}@test.com`, orgId, countryCode: 'EC', permissions: [], pv: 0,
+      });
+      return token;
+    }
+
+    it('sin tablero guardado devuelve layout null', async () => {
+      const res = await t.getJson('/users/me/dashboard', await tokenFor('user-a', uuidOrg));
+      expect(res.status).toBe(200);
+      expect(res.json).toEqual({ layout: null });
+    });
+
+    it('PUT y luego GET devuelven lo guardado', async () => {
+      const token = await tokenFor('user-a', uuidOrg);
+      const put = await t.putJson('/users/me/dashboard', { layout }, token);
+      expect(put.status).toBe(200);
+      expect(put.json).toEqual({ layout });
+
+      const get = await t.getJson('/users/me/dashboard', token);
+      expect(get.status).toBe(200);
+      expect(get.json).toEqual({ layout });
+    });
+
+    it('otro usuario u otra organización no ven el tablero', async () => {
+      await t.putJson('/users/me/dashboard', { layout }, await tokenFor('user-a', uuidOrg));
+
+      const otherUser = await t.getJson('/users/me/dashboard', await tokenFor('user-b', uuidOrg));
+      expect(otherUser.json).toEqual({ layout: null });
+
+      const sameUserOtherOrg = await t.getJson('/users/me/dashboard', await tokenFor('user-a', otherOrg));
+      expect(sameUserOtherOrg.json).toEqual({ layout: null });
+    });
+
+    it('rechaza con 422 un layout inválido y no guarda nada', async () => {
+      const token = await tokenFor('user-a', uuidOrg);
+      const item = layout[0];
+      const tooMany = Array.from({ length: 41 }, (_, k) => ({ ...item, i: `w${k}` }));
+
+      for (const bad of [[{ ...item, w: 13 }], [{ ...item, widget: 'Billing.Sales' }], tooMany]) {
+        const res = await t.putJson('/users/me/dashboard', { layout: bad }, token);
+        expect(res.status).toBe(422);
+      }
+      expect((await t.putJson('/users/me/dashboard', {}, token)).status).toBe(422);
+      expect((await t.getJson('/users/me/dashboard', token)).json).toEqual({ layout: null });
+    });
+
+    it('sin organización activa en el token responde 409', async () => {
+      const token = await tokenFor('user-a', null);
+      expect((await t.getJson('/users/me/dashboard', token)).status).toBe(409);
+      expect((await t.putJson('/users/me/dashboard', { layout }, token)).status).toBe(409);
+    });
+
+    it('sin token responde 401', async () => {
+      expect((await t.getJson('/users/me/dashboard')).status).toBe(401);
+      expect((await t.putJson('/users/me/dashboard', { layout })).status).toBe(401);
     });
   });
 });
