@@ -26,6 +26,7 @@ import {
   UserRepository,
   UserRoleRepository,
   UserEstablishmentRepository,
+  UserDashboardRepository,
   TrustedIp,
   TrustedIpRepository,
 } from '../domain/repositories';
@@ -430,6 +431,30 @@ export class InMemoryUserEstablishmentRepository implements UserEstablishmentRep
   clear(): void { this.store.clear(); }
 }
 
+export class InMemoryUserDashboardRepository implements UserDashboardRepository {
+  private store = new Map<string, { layout: unknown[]; updatedAt: Date }>();
+
+  private key(userId: string, organizationId: string): string {
+    return `${userId}|${organizationId}`;
+  }
+
+  async find(userId: string, organizationId: string): Promise<unknown[] | null> {
+    const row = this.store.get(this.key(userId, organizationId));
+    // Copia profunda: como el JSON de MySQL, lo leído no comparte referencias con lo guardado.
+    return row ? structuredClone(row.layout) : null;
+  }
+
+  async save(userId: string, organizationId: string, layout: unknown[], at: Date): Promise<void> {
+    this.store.set(this.key(userId, organizationId), { layout: structuredClone(layout), updatedAt: at });
+  }
+
+  updatedAt(userId: string, organizationId: string): Date | null {
+    return this.store.get(this.key(userId, organizationId))?.updatedAt ?? null;
+  }
+
+  clear(): void { this.store.clear(); }
+}
+
 export class InMemoryTrustedIpRepository implements TrustedIpRepository {
   private store = new Map<string, TrustedIp>();
 
@@ -475,6 +500,7 @@ export class InMemoryUnitOfWork implements UnitOfWork {
   readonly userRoles: InMemoryUserRoleRepository;
   readonly userEstablishments: InMemoryUserEstablishmentRepository;
   readonly trustedIps: InMemoryTrustedIpRepository;
+  readonly dashboards: InMemoryUserDashboardRepository;
 
   constructor(repos?: {
     credentials?: InMemoryCredentialRepository;
@@ -492,6 +518,7 @@ export class InMemoryUnitOfWork implements UnitOfWork {
     userRoles?: InMemoryUserRoleRepository;
     userEstablishments?: InMemoryUserEstablishmentRepository;
     trustedIps?: InMemoryTrustedIpRepository;
+    dashboards?: InMemoryUserDashboardRepository;
   }) {
     this.credentials = repos?.credentials ?? new InMemoryCredentialRepository();
     this.oauthAccounts = repos?.oauthAccounts ?? new InMemoryOAuthAccountRepository();
@@ -508,6 +535,7 @@ export class InMemoryUnitOfWork implements UnitOfWork {
     this.userRoles = repos?.userRoles ?? new InMemoryUserRoleRepository();
     this.userEstablishments = repos?.userEstablishments ?? new InMemoryUserEstablishmentRepository();
     this.trustedIps = repos?.trustedIps ?? new InMemoryTrustedIpRepository();
+    this.dashboards = repos?.dashboards ?? new InMemoryUserDashboardRepository();
   }
 
   async execute<T>(work: (repos: Repositories) => Promise<T>): Promise<T> {
@@ -527,6 +555,7 @@ export class InMemoryUnitOfWork implements UnitOfWork {
       userRoles: this.userRoles,
       userEstablishments: this.userEstablishments,
       trustedIps: this.trustedIps,
+      dashboards: this.dashboards,
     });
   }
 
@@ -545,6 +574,7 @@ export class InMemoryUnitOfWork implements UnitOfWork {
     this.memberships.clear();
     this.userRoles.clear();
     this.userEstablishments.clear();
+    this.dashboards.clear();
   }
 }
 
@@ -647,5 +677,6 @@ export function buildInMemoryRepos(): Repositories {
     userRoles: new InMemoryUserRoleRepository(),
     userEstablishments: new InMemoryUserEstablishmentRepository(),
     trustedIps: new InMemoryTrustedIpRepository(),
+    dashboards: new InMemoryUserDashboardRepository(),
   };
 }

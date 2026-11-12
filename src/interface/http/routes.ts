@@ -25,6 +25,8 @@ import { RequestPasswordResetUseCase } from '../../application/use-cases/request
 import { ProvisionDeviceAccountUseCase } from '../../application/use-cases/provision-device-account';
 import { ManageTrustedIpsUseCase } from '../../application/use-cases/manage-trusted-ips';
 import { UpdateUserEstablishmentsUseCase } from '../../application/use-cases/update-user-establishments';
+import { GetMyDashboardUseCase } from '../../application/use-cases/get-my-dashboard';
+import { SaveMyDashboardUseCase } from '../../application/use-cases/save-my-dashboard';
 import {
   acceptInviteSchema,
   assignRoleSchema,
@@ -41,6 +43,7 @@ import {
   switchOrgSchema,
   updateRolePermissionsSchema,
   updateUserEstablishmentsSchema,
+  saveDashboardSchema,
   validateJson,
   createTrustedIpSchema,
   updateTrustedIpSchema,
@@ -77,6 +80,8 @@ import {
   listEnabledTrustedIpsController,
   getAccessContextController,
   getOrganizationContactsController,
+  getMyDashboardController,
+  saveMyDashboardController,
 } from './controllers';
 import { AuthVariables, makeAuthMiddleware, requireInternalSecret, requirePermission } from './middlewares';
 import { TrustedIpRepository } from '../../domain/repositories';
@@ -109,6 +114,8 @@ export interface AppDependencies {
     requestPasswordReset: RequestPasswordResetUseCase;
     provisionDeviceAccount: ProvisionDeviceAccountUseCase;
     trustedIps: ManageTrustedIpsUseCase;
+    getMyDashboard: GetMyDashboardUseCase;
+    saveMyDashboard: SaveMyDashboardUseCase;
   };
   tokenService: TokenService;
   accessContext: AccessContextResolver;
@@ -149,6 +156,10 @@ export function adminRoutes(deps: AppDependencies): Hono<{ Variables: AuthVariab
   const { useCases } = deps;
   const auth = makeAuthMiddleware(deps.tokenService);
 
+  // Tablero de Inicio propio: sin permiso, cada usuario lee y guarda solo el suyo (userId y orgId salen del token).
+  // Van antes que cualquier `/users/:id...` para que `me` nunca se tome como un id.
+  r.get('/users/me/dashboard', auth, getMyDashboardController(useCases.getMyDashboard));
+  r.put('/users/me/dashboard', auth, validateJson(saveDashboardSchema), saveMyDashboardController(useCases.saveMyDashboard));
   r.get('/users', auth, requirePermission('user:read'), listUsersController(useCases.listUsers));
   // Sin permiso propio a propósito: es el directorio de compañeros (nombre, correo, foto) que necesita cualquier miembro para
   // asignar una tarea o sumar a alguien a un proyecto. Lo administrativo (roles, permisos) sigue detrás de `user:read`.

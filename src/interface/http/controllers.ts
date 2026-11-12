@@ -23,6 +23,8 @@ import { ResetPasswordUseCase } from '../../application/use-cases/reset-password
 import { RequestPasswordResetUseCase } from '../../application/use-cases/request-password-reset';
 import { ProvisionDeviceAccountUseCase } from '../../application/use-cases/provision-device-account';
 import { UpdateUserEstablishmentsUseCase } from '../../application/use-cases/update-user-establishments';
+import { GetMyDashboardUseCase } from '../../application/use-cases/get-my-dashboard';
+import { SaveMyDashboardUseCase } from '../../application/use-cases/save-my-dashboard';
 import { NoActiveOrganizationError } from '../../domain/errors';
 import { AuthVariables } from './middlewares';
 import { AccessContextResolver } from '../../application/ports';
@@ -392,5 +394,24 @@ export function listEnabledTrustedIpsController(repo: TrustedIpRepository) {
   return async (c: Context) => {
     const ips = await repo.findEnabled();
     return c.json(ips, 200);
+  };
+}
+
+// El tablero es por organización: sin organización activa no hay tablero que leer ni guardar (409, como el resto).
+export function getMyDashboardController(useCase: GetMyDashboardUseCase) {
+  return async (c: Context<{ Variables: AuthVariables }>) => {
+    const orgId = c.get('orgId');
+    if (!orgId) throw new NoActiveOrganizationError();
+    return c.json(await useCase.execute(c.get('userId'), orgId), 200);
+  };
+}
+
+export function saveMyDashboardController(useCase: SaveMyDashboardUseCase) {
+  return async (c: Context<{ Variables: AuthVariables }>) => {
+    const orgId = c.get('orgId');
+    if (!orgId) throw new NoActiveOrganizationError();
+    const body = c.req.valid('json' as never) as { layout: unknown[] };
+    const result = await useCase.execute({ userId: c.get('userId'), organizationId: orgId, layout: body.layout });
+    return c.json(result, 200);
   };
 }

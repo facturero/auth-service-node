@@ -403,6 +403,31 @@ UserEstablishmentModel.init(
   },
 );
 
+/** Tablero de Inicio de un usuario en una organización. `layout` es JSON que solo entiende el frontend. */
+export class UserDashboardModel extends Model<
+  InferAttributes<UserDashboardModel>,
+  InferCreationAttributes<UserDashboardModel>
+> {
+  declare user_id: string;
+  declare organization_id: string;
+  declare layout: unknown[];
+  declare updated_at: Date;
+}
+
+UserDashboardModel.init(
+  {
+    user_id: { type: DataTypes.CHAR(36), allowNull: false, primaryKey: true },
+    organization_id: { type: DataTypes.CHAR(36), allowNull: false, primaryKey: true },
+    layout: { type: DataTypes.JSON, allowNull: false },
+    updated_at: { type: DataTypes.DATE, allowNull: false },
+  },
+  {
+    sequelize,
+    tableName: 'user_dashboards',
+    timestamps: false,
+  },
+);
+
 export class MembershipModel extends Model<
   InferAttributes<MembershipModel>,
   InferCreationAttributes<MembershipModel>

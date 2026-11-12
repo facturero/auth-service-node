@@ -37,6 +37,8 @@ import { ProvisionDeviceAccountUseCase } from './application/use-cases/provision
 import { ManageTrustedIpsUseCase } from './application/use-cases/manage-trusted-ips';
 import { SessionAuditor } from './application/session-audit';
 import { UpdateUserEstablishmentsUseCase } from './application/use-cases/update-user-establishments';
+import { GetMyDashboardUseCase } from './application/use-cases/get-my-dashboard';
+import { SaveMyDashboardUseCase } from './application/use-cases/save-my-dashboard';
 import { OutboxRelay, InboxConsumer } from '@facturero/outbox-relay';
 import { orgUpdatedHandler } from './infrastructure/messaging/consumer';
 import { SignedInviteTokenService } from './infrastructure/security/invite-token-service';
@@ -115,6 +117,8 @@ async function main(): Promise<void> {
       requestPasswordReset: new RequestPasswordResetUseCase(uow, passwordResetLinkService),
       provisionDeviceAccount: new ProvisionDeviceAccountUseCase(uow, tokenService),
       trustedIps: new ManageTrustedIpsUseCase(uow),
+      getMyDashboard: new GetMyDashboardUseCase(repos.dashboards),
+      saveMyDashboard: new SaveMyDashboardUseCase(repos.dashboards),
     },
     tokenService,
     accessContext,

@@ -27,6 +27,8 @@ import { ResetPasswordUseCase } from '../application/use-cases/reset-password';
 import { ProvisionDeviceAccountUseCase } from '../application/use-cases/provision-device-account';
 import { ManageTrustedIpsUseCase } from '../application/use-cases/manage-trusted-ips';
 import { UpdateUserEstablishmentsUseCase } from '../application/use-cases/update-user-establishments';
+import { GetMyDashboardUseCase } from '../application/use-cases/get-my-dashboard';
+import { SaveMyDashboardUseCase } from '../application/use-cases/save-my-dashboard';
 import {
   InMemoryUnitOfWork,
   InMemoryCredentialRepository,
@@ -93,6 +95,8 @@ function buildTestApp() {
       }),
       provisionDeviceAccount: new ProvisionDeviceAccountUseCase(uow, tokenService),
       trustedIps: new ManageTrustedIpsUseCase(uow),
+      getMyDashboard: new GetMyDashboardUseCase(uow.dashboards),
+      saveMyDashboard: new SaveMyDashboardUseCase(uow.dashboards),
     },
     tokenService,
     accessContext,

@@ -128,6 +128,17 @@ export interface UserEstablishmentRepository {
   replaceForUser(userId: string, establishmentIds: string[]): Promise<void>;
 }
 
+/**
+ * Tablero de Inicio por usuario y organización. El `layout` es opaco para este servicio: el catálogo de widgets
+ * vive en el frontend, aquí solo se guarda lo que ya pasó la validación de forma del borde HTTP.
+ */
+export interface UserDashboardRepository {
+  /** Disposición guardada, o `null` si el usuario aún no personalizó su tablero en esa organización. */
+  find(userId: string, organizationId: string): Promise<unknown[] | null>;
+  /** Crea o reemplaza la disposición completa. */
+  save(userId: string, organizationId: string, layout: unknown[], at: Date): Promise<void>;
+}
+
 export interface TrustedIp {
   id: string;
   ip: string;
@@ -171,4 +182,5 @@ export interface Repositories {
   userRoles: UserRoleRepository;
   userEstablishments: UserEstablishmentRepository;
   trustedIps: TrustedIpRepository;
+  dashboards: UserDashboardRepository;
 }

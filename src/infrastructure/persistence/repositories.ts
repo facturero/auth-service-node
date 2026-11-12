@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Op, QueryTypes, Transaction } from 'sequelize';
+import { Op, QueryTypes, Transaction, UniqueConstraintError } from 'sequelize';
 import { identificationLookupValues } from '../../domain/value-objects';
 import { sequelize } from './sequelize';
 import {
@@ -18,6 +18,7 @@ import {
   UserModel,
   UserRoleModel,
   UserEstablishmentModel,
+  UserDashboardModel,
   TrustedIpModel,
 } from './models';
 import {
@@ -51,6 +52,7 @@ import {
   UserRepository,
   UserRoleRepository,
   UserEstablishmentRepository,
+  UserDashboardRepository,
 } from '../../domain/repositories';
 import { UnitOfWork } from '../../application/ports';
 
@@ -674,6 +676,39 @@ function userEstablishmentRepository(tx?: Transaction): UserEstablishmentReposit
   };
 }
 
+function userDashboardRepository(tx?: Transaction): UserDashboardRepository {
+  return {
+    async find(userId, organizationId) {
+      const row = await UserDashboardModel.findOne({
+        where: { user_id: userId, organization_id: organizationId },
+        transaction: tx,
+      });
+      if (!row) return null;
+      // mysql2 ya entrega las columnas JSON parseadas, pero MariaDB (y algunos drivers) las devuelve como texto:
+      // se acepta ambas para no depender del motor.
+      const layout: unknown = typeof row.layout === 'string' ? JSON.parse(row.layout) : row.layout;
+      return Array.isArray(layout) ? layout : null;
+    },
+    // findOne + create/update en vez de upsert(): deja el SQL a la vista y, al reemplazar el JSON entero,
+    // no hay mezcla posible. La única carrera es la de dos pestañas del mismo usuario guardando a la vez:
+    // la segunda choca con la PK en el create y se resuelve como update (gana la última, como en un PUT).
+    async save(userId, organizationId, layout, at) {
+      const where = { user_id: userId, organization_id: organizationId };
+      const row = await UserDashboardModel.findOne({ where, transaction: tx });
+      if (row) {
+        await row.update({ layout, updated_at: at }, { transaction: tx });
+        return;
+      }
+      try {
+        await UserDashboardModel.create({ ...where, layout, updated_at: at }, { transaction: tx });
+      } catch (error) {
+        if (!(error instanceof UniqueConstraintError)) throw error;
+        await UserDashboardModel.update({ layout, updated_at: at }, { where, transaction: tx });
+      }
+    },
+  };
+}
+
 function toTrustedIp(row: InstanceType<typeof TrustedIpModel>): TrustedIp {
   return {
     id: row.id,
@@ -784,6 +819,7 @@ export function buildRepositories(tx?: Transaction): Repositories {
     userRoles: userRoleRepository(tx),
     userEstablishments: userEstablishmentRepository(tx),
     trustedIps: trustedIpRepository(tx),
+    dashboards: userDashboardRepository(tx),
   };
 }
 

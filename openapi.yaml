@@ -319,6 +319,65 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /users/me/dashboard:
+    get:
+      tags: [users]
+      summary: Tablero de Inicio propio en la organización activa
+      description: >
+        Disposición del tablero de Inicio del usuario del token en la organización del token. No exige permiso: cada
+        usuario lee solo el suyo. `layout: null` significa que nunca lo personalizó (el frontend muestra su tablero por
+        defecto); `[]` es un tablero que el usuario vació a propósito.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Tablero guardado, o `null` si no hay
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [layout]
+                properties:
+                  layout:
+                    type: array
+                    nullable: true
+                    items: { $ref: '#/components/schemas/DashboardItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: El token no tiene organización activa
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { code: NO_ACTIVE_ORGANIZATION, message: El usuario no tiene una organización activa. }
+    put:
+      tags: [users]
+      summary: Guardar el tablero de Inicio propio en la organización activa
+      description: >
+        Reemplaza entero el tablero del usuario del token en la organización del token. No exige permiso. El servidor
+        no conoce el catálogo de widgets: solo valida forma y límites (máx. 40 ítems, `i` distintos, JSON de `layout`
+        de 16 KB como mucho). Las claves fuera del contrato se descartan. Responde lo que quedó guardado.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveDashboardRequest' }
+      responses:
+        '200':
+          description: Tablero guardado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SaveDashboardRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: El token no tiene organización activa
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
   /users/directory:
     get:
       tags: [users]
@@ -839,6 +898,36 @@ components:
         permissions:
           type: array
           items: { type: string, example: customer:read }
+
+    # --- Tablero de Inicio ---------------------------------------------------
+    DashboardItem:
+      type: object
+      description: Un widget en la rejilla de 12 columnas del frontend.
+      required: [i, widget, x, y, w, h]
+      properties:
+        i: { type: string, minLength: 1, maxLength: 40, description: 'Id del ítem; único dentro del layout' }
+        widget: { type: string, minLength: 1, maxLength: 60, pattern: '^[a-z0-9_.]+$', example: billing.sales_today }
+        x: { type: integer, minimum: 0, maximum: 200 }
+        y: { type: integer, minimum: 0, maximum: 200 }
+        w: { type: integer, minimum: 1, maximum: 12 }
+        h: { type: integer, minimum: 1, maximum: 20 }
+        config:
+          type: object
+          maxProperties: 10
+          additionalProperties:
+            oneOf:
+              - { type: string }
+              - { type: number }
+              - { type: boolean }
+
+    SaveDashboardRequest:
+      type: object
+      required: [layout]
+      properties:
+        layout:
+          type: array
+          maxItems: 40
+          items: { $ref: '#/components/schemas/DashboardItem' }
 
     # --- Error ---------------------------------------------------------------
     Error:
