@@ -141,4 +141,37 @@ describe('SequelizeAccessContextResolver', () => {
     expect(ctx.orgId).toBeNull();
     expect(ctx.pv).toBe(7);
   });
+
+  // El catálogo fiscal (tax-service) es de PLATAFORMA: `tax:manage` no puede
+  // asignarse por organización sin abrir una escalada, así que se inyecta solo
+  // para los usuarios `is_platform_admin`. Sin esta rama, ningún usuario podía
+  // escribir en el catálogo: el permiso existía en el código pero no en el token.
+  it('grants platform permissions to a platform admin without organization', async () => {
+    const admin = User.fromPersistence({
+      id: 'u-plat', email: 'soporte@facturero.local', username: 'PLAT0001', identification: null, fullName: null, avatarFileId: null, status: 'active',
+      isPlatformAdmin: true, permissionsVersion: 0,
+      createdAt: new Date(), updatedAt: new Date(),
+    });
+    await users.save(admin);
+
+    const ctx = await resolver.resolve('u-plat');
+    expect(ctx.orgId).toBeNull();
+    expect(ctx.permissions).toContain('tax:manage');
+  });
+
+  it('merges platform permissions with the organization permissions of a platform admin', async () => {
+    const admin = User.fromPersistence({
+      id: 'u-plat2', email: 'soporte2@facturero.local', username: 'PLAT0002', identification: null, fullName: null, avatarFileId: null, status: 'active',
+      isPlatformAdmin: true, permissionsVersion: 2,
+      createdAt: new Date(), updatedAt: new Date(),
+    });
+    await users.save(admin);
+    await memberships.save(Membership.create({ userId: 'u-plat2', organizationId: 'org-z', status: 'active' }));
+    query.setPermissions('u-plat2', 'org-z', ['invoice:read']);
+    query.setCountryCode('org-z', 'EC');
+
+    const ctx = await resolver.resolve('u-plat2');
+    expect(ctx.orgId).toBe('org-z');
+    expect(ctx.permissions).toEqual(['invoice:read', 'tax:manage', 'feedback:manage']);
+  });
 });

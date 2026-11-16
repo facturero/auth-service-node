@@ -4,6 +4,22 @@ import { Username } from './value-objects';
 export type UserStatus = 'active' | 'disabled';
 export type MembershipStatus = 'active' | 'invited' | 'disabled';
 
+/**
+ * Permisos de PLATAFORMA: aplican fuera del alcance de toda organización y por
+ * eso NO viven en el catálogo `permissions` (que es lo que la pantalla de roles
+ * ofrece asignar a cada organización). Si `tax:manage` estuviera en ese catálogo,
+ * cualquier administrador de tenant podría concedérselo a un rol propio y editar
+ * el catálogo fiscal GLOBAL: tax-service no aísla por `organization_id`.
+ *
+ * Se inyectan en el contexto de acceso solo para los usuarios `is_platform_admin`
+ * (soporte), que son los que administran los datos de plataforma.
+ *
+ * - `feedback:manage`: la bandeja de comentarios y mejoras de TODAS las empresas y
+ *   los puntos de fidelidad (feedback-service). Si fuera asignable, el admin de una
+ *   empresa leería lo que escriben las demás y se daría puntos a sí mismo.
+ */
+export const PLATFORM_PERMISSIONS: readonly string[] = ['tax:manage', 'feedback:manage'];
+
 // ---------------------------------------------------------------------------
 // User
 // ---------------------------------------------------------------------------
