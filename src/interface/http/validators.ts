@@ -39,21 +39,21 @@ export const logoutSchema = z.object({
 });
 
 export const switchOrgSchema = z.object({
-  organizationId: z.string().uuid('organizationId debe ser un UUID válido.'),
+  organizationId: z.string().guid('organizationId debe ser un UUID válido.'),
 });
 
 export const inviteUserSchema = z.object({
   email: z.string().email('Email inválido.'),
-  roleIds: z.array(z.string().uuid('roleId debe ser un UUID válido.')).min(1),
-  establishmentIds: z.array(z.string().uuid('establishmentId debe ser un UUID válido.')).optional(),
+  roleIds: z.array(z.string().guid('roleId debe ser un UUID válido.')).min(1),
+  establishmentIds: z.array(z.string().guid('establishmentId debe ser un UUID válido.')).optional(),
 });
 
 export const assignRoleSchema = z.object({
-  roleIds: z.array(z.string().uuid('roleId debe ser un UUID válido.')).min(1),
+  roleIds: z.array(z.string().guid('roleId debe ser un UUID válido.')).min(1),
 });
 
 export const updateUserEstablishmentsSchema = z.object({
-  establishmentIds: z.array(z.string().uuid('establishmentId debe ser un UUID válido.')),
+  establishmentIds: z.array(z.string().guid('establishmentId debe ser un UUID válido.')),
 });
 
 /**
@@ -74,7 +74,7 @@ const dashboardItemSchema = z
     w: z.number().int().min(1).max(12),
     h: z.number().int().min(1).max(20),
     config: z
-      .record(z.union([z.string(), z.number(), z.boolean()]))
+      .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
       .refine((cfg) => Object.keys(cfg).length <= 10, 'config admite como máximo 10 claves.')
       .optional(),
   });
@@ -119,16 +119,16 @@ export const resetPasswordSchema = z.object({
 export const completeProfileSchema = z.object({
   fullName: z.string().min(1, 'El nombre es obligatorio.').max(255),
   identificationType: z.enum(['cedula', 'ruc', 'passport', 'dni'], {
-    errorMap: () => ({ message: 'Tipo de identificación inválido. Debe ser cedula, ruc, passport o dni.' }),
+    error: 'Tipo de identificación inválido. Debe ser cedula, ruc, passport o dni.',
   }),
   identificationNumber: z.string().min(1, 'El número de identificación es obligatorio.').max(30),
   avatarFileId: z.string().optional(),
 });
 
   export const provisionDeviceAccountSchema = z.object({
-      organizationId: z.string().uuid('organizationId debe ser un UUID válido.'),
-      emissionPointId: z.string().uuid('emissionPointId debe ser un UUID válido.'),
-      deviceId: z.string().uuid('deviceId debe ser un UUID válido.'),
+      organizationId: z.string().guid('organizationId debe ser un UUID válido.'),
+      emissionPointId: z.string().guid('emissionPointId debe ser un UUID válido.'),
+      deviceId: z.string().guid('deviceId debe ser un UUID válido.'),
       label: z.string().max(255).optional(),
     });
 
